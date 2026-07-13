@@ -11,7 +11,8 @@
 #   3. Existing VNet: lets you pick the resource group, VNet, and subnet.
 #   4. New VNet: suggests an unused CIDR block and validates that the chosen
 #      CIDR does not overlap with any existing VNet in the subscription.
-#   5. Creates the resources and provisions the jump server VM with a
+#   5. Lets you choose the VM SKU and validates its availability in the region.
+#   6. Creates the resources and provisions the jump server VM with a
 #      system-assigned managed identity (required by the framework).
 #
 # Requirements: az (Azure CLI), python3 (for CIDR math), an account with
@@ -71,11 +72,7 @@ suggest_cidr() {
     python3 - "$@" <<'EOF'
 import ipaddress, sys
 existing = [ipaddress.ip_network(s) for s in sys.argv[1:]]
-for i in range(100, 255):
-    cand = ipaddress.ip_network(f"10.{i}.0.0/24")
-    if not any(cand.overlaps(e) for e in existing):
-        print(cand); sys.exit(0)
-for i in range(0, 100):
+for i in list(range(100, 255)) + list(range(0, 100)):
     cand = ipaddress.ip_network(f"10.{i}.0.0/24")
     if not any(cand.overlaps(e) for e in existing):
         print(cand); sys.exit(0)
@@ -200,8 +197,40 @@ esac
 # ----------------------------- 3. VM parameters ------------------------------
 echo
 ask VM_NAME    "Jump server VM name" "vm-sapqa-jump01"
-ask VM_SIZE    "VM size"             "Standard_D4s_v5"
 ask ADMIN_USER "Admin username"      "azureadm"
+
+# ---- VM SKU (size) selection with regional availability validation ----------
+echo
+echo "Jump server SKU (VM size):"
+echo "  1) Standard_D2s_v5   (2 vCPU,  8 GiB) - minimal"
+echo "  2) Standard_D4s_v5   (4 vCPU, 16 GiB) - recommended"
+echo "  3) Standard_D8s_v5   (8 vCPU, 32 GiB) - heavy parallel test runs"
+echo "  4) Enter a custom SKU"
+while true; do
+    ask SKU_CHOICE "Choose 1-4" "2"
+    case "$SKU_CHOICE" in
+        1) VM_SIZE="Standard_D2s_v5" ;;
+        2) VM_SIZE="Standard_D4s_v5" ;;
+        3) VM_SIZE="Standard_D8s_v5" ;;
+        4) ask VM_SIZE "Custom VM SKU (e.g. Standard_E4s_v5)" ;;
+        *) err "Invalid choice."; continue ;;
+    esac
+
+    log "Checking availability of $VM_SIZE in $LOCATION..."
+    SKU_FOUND=$(az vm list-skus --location "$LOCATION" --size "$VM_SIZE" \
+        --resource-type virtualMachines --query "[0].name" -o tsv 2>/dev/null || true)
+    if [[ -z "$SKU_FOUND" ]]; then
+        err "SKU '$VM_SIZE' is not available in region '$LOCATION'."
+        ask SHOW_SKUS "List available D-series v5 SKUs in $LOCATION? (yes/no)" "yes"
+        if [[ "$SHOW_SKUS" == "yes" ]]; then
+            az vm list-skus --location "$LOCATION" --resource-type virtualMachines \
+                --query "[?contains(name, 'Ds_v5')].name" -o tsv | sort -u
+        fi
+        continue
+    fi
+    log "SKU $VM_SIZE is available in $LOCATION."
+    break
+done
 
 echo
 echo "Operating system (must be a supported management-server distro):"

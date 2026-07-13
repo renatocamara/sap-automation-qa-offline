@@ -40,13 +40,83 @@ SSH (Linux) or WinRM (Windows) from the management server.
 
 ---
 
-## Part 1 — Build the bundle (on the internet-connected staging machine)
+## Part 0 — Prepare the staging machine (first-time setup)
 
-### Step 1.1 — Get the repository
+These steps happen on the **internet-connected staging machine** only. If git and
+Python are already installed, skip to Part 1.
+
+### Step 0.1 — Install git
+
+Git is the tool used to download ("clone") the framework's source code from GitHub.
 
 ```bash
-mkdir -p ~/sapqa-offline && cd ~/sapqa-offline
+# RHEL / CentOS
+sudo yum install -y git
+
+# Ubuntu / Debian
+sudo apt-get update && sudo apt-get install -y git
+
+# SLES
+sudo zypper install -y git
+```
+
+Verify it worked:
+
+```bash
+git --version        # should print something like: git version 2.39.x
+```
+
+### Step 0.2 — Install Python 3.10+ (3.11 recommended)
+
+```bash
+# RHEL 8/9
+sudo dnf install -y python3.11 python3.11-pip
+
+# Ubuntu 22.04 (python3 is already 3.10 — just add pip and venv)
+sudo apt-get install -y python3-pip python3-venv
+
+# SLES 15
+sudo zypper install -y python311 python311-pip
+```
+
+Verify:
+
+```bash
+python3.11 --version    # or: python3 --version
+```
+
+**Why the version matters:** the framework requires Python ≥ 3.10, and the offline
+bundle you build in Part 1 only works with the same Python version on both machines.
+
+### Step 0.3 — Clone the repository (download the source code)
+
+```bash
+mkdir -p ~/sapqa-offline        # create a working folder
+cd ~/sapqa-offline              # move into it
 git clone https://github.com/Azure/sap-automation-qa.git
+```
+
+**What this command does:** `git clone <URL>` downloads a full copy of the repository
+into a new folder named `sap-automation-qa` in your current directory. After it
+finishes you can confirm with:
+
+```bash
+ls sap-automation-qa            # you should see scripts/, docs/, requirements.in, ...
+```
+
+**No git available / policy forbids it?** You can download the same content as a ZIP
+instead: open `https://github.com/Azure/sap-automation-qa` in a browser, click the
+green **Code** button → **Download ZIP**, then `unzip sap-automation-qa-main.zip` and
+rename the folder to `sap-automation-qa`.
+
+---
+
+## Part 1 — Build the bundle (on the internet-connected staging machine)
+
+### Step 1.1 — Pack the repository for transfer
+
+```bash
+cd ~/sapqa-offline
 tar czf sap-automation-qa.tar.gz sap-automation-qa
 ```
 
