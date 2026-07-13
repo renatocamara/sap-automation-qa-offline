@@ -104,13 +104,30 @@ Without these, every Linux run fails with an error hidden behind `no_log`:
 ### Step 4 — Check Python on the SAP servers
 
 The framework requires Python ≥ 3.7 **on the SAP VMs**. SLES 15 / RHEL 8 default to
-3.6 — install a newer one (harmless, adds a parallel interpreter, touches no SAP
-component):
+3.6. First, just check — recent Azure images often already include a newer
+interpreter side by side (our lab's SLES 15 SP5 image shipped `python3.11` out of
+the box):
+
+```bash
+ssh <user>@<sap-vm> 'ls /usr/bin/python3*'
+```
+
+If a 3.7+ interpreter is listed, nothing to install — you'll simply reference it in
+`hosts.yaml` (Step 5). If not, install one. Note that the SAP VMs having "no
+internet" does **not** block this: SLES/RHEL pay-as-you-go VMs on Azure receive
+packages from the distro's Azure-internal update infrastructure (SUSE Public Cloud
+Update Infrastructure / RHUI) — the same private channel that delivers their security
+patches:
 
 ```bash
 ssh <user>@<sap-vm> 'sudo zypper install -y python311'    # SLES
 ssh <user>@<sap-vm> 'sudo dnf install -y python3.11'      # RHEL
 ```
+
+The install is harmless to SAP: it adds a parallel interpreter and changes no system
+default. Only if even the update infrastructure is blocked (rare), transfer the RPMs
+through the jump server and install with `rpm -ivh` — same offline pattern as
+Scenario 1.
 
 ### Step 5 — Describe the SAP system (workspace)
 
