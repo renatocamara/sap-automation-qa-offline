@@ -4,6 +4,19 @@ Tooling to run the [SAP Testing Automation Framework (Azure/sap-automation-qa)](
 configuration checks in environments where the management (jump) server has **no
 internet access** — common in secure and regulated SAP landscapes.
 
+## Architecture
+
+![Offline execution architecture](./architecture.svg)
+
+The numbered flow: (1) an internet-connected staging machine downloads the framework
+and dependencies and builds the offline bundle; (2) the bundle is transferred to the
+jump server over an approved channel; (3) the jump server inspects the SAP VMs via
+SSH — read-only, nothing is installed on them; (4) it validates Azure resource
+configuration through the ARM APIs using its managed identity (private access);
+(5) it generates the HTML assessment report; (6) the report is shared with Microsoft
+for review. See the [installation guide](./sap-automation-qa-offline-install.md) for
+the full step-by-step procedure.
+
 ## Contents
 
 | File | Description |

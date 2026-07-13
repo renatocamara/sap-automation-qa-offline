@@ -11,6 +11,12 @@ machine, transfer one bundle, and install manually.
 
 ---
 
+## Architecture overview
+
+![Offline execution architecture](./architecture.svg)
+
+---
+
 ## The machines involved — read this first
 
 This procedure uses **two different machines**. Every step in this guide is tagged
