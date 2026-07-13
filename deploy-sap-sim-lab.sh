@@ -28,6 +28,11 @@ err()  { echo -e "\e[1;31m[ERROR]\e[0m $*" >&2; }
 die()  { err "$*"; exit 1; }
 ask() {
     local __var="$1" __q="$2" __def="${3:-}" __ans
+    if [[ "${AUTO:-0}" == "1" && -n "$__def" ]]; then
+        echo "$__q [$__def]: (auto)"
+        printf -v "$__var" '%s' "$__def"
+        return
+    fi
     if [[ -n "$__def" ]]; then read -r -p "$__q [$__def]: " __ans; __ans="${__ans:-$__def}";
     else while true; do read -r -p "$__q: " __ans; [[ -n "$__ans" ]] && break; echo "  A value is required."; done; fi
     printf -v "$__var" '%s' "$__ans"
@@ -82,7 +87,11 @@ SPOKE_SUB="$FOUND_SUB"; SPOKE_RG="$FOUND_RG"
 log "Spoke VNet found: RG=$SPOKE_RG, subscription=$(az account show --subscription "$SPOKE_SUB" --query name -o tsv)"
 
 LOCATION=$(az network vnet show -g "$HUB_RG" -n "$HUB_VNET" --subscription "$HUB_SUB" --query location -o tsv)
-ask LAB_RG     "Resource group for the lab VMs (created if missing)" "rg-sapqa-lab"
+# Azure requires VM/NIC to live in the SAME subscription as their VNet, so the
+# lab uses one RG per side: <base>-mgmt next to the hub, <base>-sap next to the spoke.
+ask LAB_RG     "Base name for the lab resource groups" "rg-sapqa-lab"
+MGMT_RG="${LAB_RG}-mgmt"   # created in the hub's subscription
+SAP_RG="${LAB_RG}-sap"     # created in the spoke's subscription
 ask ADMIN_USER "Admin username for all VMs" "azureadm"
 
 # Verify hub <-> spoke peering
@@ -142,12 +151,16 @@ fi
 # ----------------------------- VM size auto-detection ------------------------
 # Capacity restrictions vary per subscription/region. Test candidates in order
 # and use the first SKU that is actually deployable.
-log "Detecting an available VM size in $LOCATION for this subscription..."
+log "Detecting a VM size available in $LOCATION for BOTH the hub and spoke subscriptions..."
 VM_SIZE=""
-for cand in Standard_DS1_v2 Standard_B2s Standard_B2ms Standard_D2s_v5 Standard_D2s_v4 \
+for cand in Standard_D2als_v7 Standard_D2ls_v7 Standard_D2as_v7 Standard_D2s_v7 \
+            Standard_DS1_v2 Standard_B2s Standard_B2ms Standard_D2s_v5 Standard_D2s_v4 \
             Standard_D2as_v5 Standard_D2as_v4 Standard_D2_v5 Standard_D2_v4 Standard_E2s_v5; do
-    if [[ -n $(az vm list-skus -l "$LOCATION" --size "$cand" --resource-type virtualMachines \
-            --query "[?name=='$cand' && length(restrictions)==\`0\`].name" -o tsv 2>/dev/null) ]]; then
+    ok_hub=$(az vm list-skus -l "$LOCATION" --size "$cand" --resource-type virtualMachines --subscription "$HUB_SUB" \
+            --query "[?name=='$cand' && length(restrictions)==\`0\`].name" -o tsv 2>/dev/null)
+    ok_spk=$(az vm list-skus -l "$LOCATION" --size "$cand" --resource-type virtualMachines --subscription "$SPOKE_SUB" \
+            --query "[?name=='$cand' && length(restrictions)==\`0\`].name" -o tsv 2>/dev/null)
+    if [[ -n "$ok_hub" && -n "$ok_spk" ]]; then
         VM_SIZE="$cand"; break
     fi
 done
@@ -155,39 +168,45 @@ done
 ask VM_SIZE "VM size for all lab VMs" "$VM_SIZE"
 log "Using VM size: $VM_SIZE"
 
-# ----------------------------- resource group + VMs --------------------------
-az group show -n "$LAB_RG" >/dev/null 2>&1 || az group create -n "$LAB_RG" -l "$LOCATION" >/dev/null
+# ----------------------------- resource groups + VMs -------------------------
+# Each RG is created in the SAME subscription as the VNet its VMs join.
+az group show -n "$MGMT_RG" --subscription "$HUB_SUB" >/dev/null 2>&1 || \
+    az group create -n "$MGMT_RG" -l "$LOCATION" --subscription "$HUB_SUB" >/dev/null
+az group show -n "$SAP_RG" --subscription "$SPOKE_SUB" >/dev/null 2>&1 || \
+    az group create -n "$SAP_RG" -l "$LOCATION" --subscription "$SPOKE_SUB" >/dev/null
 
 HUB_SUBNET_ID=$(az network vnet subnet show -g "$HUB_RG" --vnet-name "$HUB_VNET" -n snet-sapqa-mgmt --subscription "$HUB_SUB" --query id -o tsv)
 SIM_SUBNET_ID=$(az network vnet subnet show -g "$SPOKE_RG" --vnet-name "$SPOKE_VNET" -n snet-sap-sim --subscription "$SPOKE_SUB" --query id -o tsv)
 
-log "Creating jump server vm-sapqa-jump01 (Ubuntu 22.04, $VM_SIZE, no public IP)..."
-az vm create -g "$LAB_RG" -n vm-sapqa-jump01 -l "$LOCATION" \
+log "Creating jump server vm-sapqa-jump01 (Ubuntu 22.04, $VM_SIZE, no public IP) in $MGMT_RG..."
+az vm create -g "$MGMT_RG" -n vm-sapqa-jump01 -l "$LOCATION" --subscription "$HUB_SUB" \
     --image Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest \
     --size "$VM_SIZE" --subnet "$HUB_SUBNET_ID" --public-ip-address "" \
     --nsg "" --admin-username "$ADMIN_USER" --ssh-key-values "$KEY.pub" \
     --assign-identity --output none
 
 for VM in vm-sapdb01 vm-sapascs01; do
-    log "Creating simulated SAP VM $VM (SLES 15 SP5, $VM_SIZE, no public IP)..."
-    az vm create -g "$LAB_RG" -n "$VM" -l "$LOCATION" \
+    log "Creating simulated SAP VM $VM (SLES 15 SP5, $VM_SIZE, no public IP) in $SAP_RG..."
+    az vm create -g "$SAP_RG" -n "$VM" -l "$LOCATION" --subscription "$SPOKE_SUB" \
         --image SUSE:sles-15-sp5:gen2:latest \
         --size "$VM_SIZE" --subnet "$SIM_SUBNET_ID" --public-ip-address "" \
         --nsg "" --admin-username "$ADMIN_USER" --ssh-key-values "$KEY.pub" --output none
 done
 
 # ----------------------------- RBAC ------------------------------------------
-IDENTITY=$(az vm show -g "$LAB_RG" -n vm-sapqa-jump01 --query identity.principalId -o tsv)
+IDENTITY=$(az vm show -g "$MGMT_RG" -n vm-sapqa-jump01 --subscription "$HUB_SUB" --query identity.principalId -o tsv)
 log "Granting Reader to jump server identity ($IDENTITY)..."
 az role assignment create --assignee "$IDENTITY" --role Reader \
-    --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$LAB_RG" >/dev/null || warn "Reader on $LAB_RG failed (may already exist)."
+    --scope "/subscriptions/$SPOKE_SUB/resourceGroups/$SAP_RG" >/dev/null || warn "Reader on $SAP_RG failed (may already exist)."
 az role assignment create --assignee "$IDENTITY" --role Reader \
     --scope "/subscriptions/$SPOKE_SUB/resourceGroups/$SPOKE_RG" >/dev/null || warn "Reader on $SPOKE_RG failed (optional)."
+az role assignment create --assignee "$IDENTITY" --role Reader \
+    --scope "/subscriptions/$HUB_SUB/resourceGroups/$MGMT_RG" >/dev/null || warn "Reader on $MGMT_RG failed (optional)."
 
 # ----------------------------- workspace files -------------------------------
-JUMP_IP=$(az vm show -g "$LAB_RG" -n vm-sapqa-jump01 -d --query privateIps -o tsv)
-DB_IP=$(az vm show -g "$LAB_RG" -n vm-sapdb01 -d --query privateIps -o tsv)
-SCS_IP=$(az vm show -g "$LAB_RG" -n vm-sapascs01 -d --query privateIps -o tsv)
+JUMP_IP=$(az vm show -g "$MGMT_RG" -n vm-sapqa-jump01 -d --subscription "$HUB_SUB" --query privateIps -o tsv)
+DB_IP=$(az vm show -g "$SAP_RG" -n vm-sapdb01 -d --subscription "$SPOKE_SUB" --query privateIps -o tsv)
+SCS_IP=$(az vm show -g "$SAP_RG" -n vm-sapascs01 -d --subscription "$SPOKE_SUB" --query privateIps -o tsv)
 
 WS="lab-workspace/LAB-EUS2-SAP01-X00"
 mkdir -p "$WS"
