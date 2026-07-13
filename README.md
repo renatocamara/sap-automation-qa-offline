@@ -21,8 +21,10 @@ the full step-by-step procedure.
 
 | File | Description |
 |---|---|
-| [sap-automation-qa-offline-install.md](./sap-automation-qa-offline-install.md) | **Step-by-step offline installation guide.** Explains every step and why it's needed: preparing a staging machine (installing git/Python, cloning the repo), building the offline dependency bundle, transferring it, installing on the air-gapped server, and running the checks. Start here. |
+| [QUICKSTART.md](./QUICKSTART.md) | **Start here if a jump server already exists.** One-command decision test, then two paths: Scenario 1 — air-gapped jump server (staging machine + offline bundle); Scenario 2 — jump server with internet/proxy (direct `setup.sh`). Same execution and report steps for both. |
+| [sap-automation-qa-offline-install.md](./sap-automation-qa-offline-install.md) | **Step-by-step offline installation guide** (deep reference for Scenario 1). Explains every step and why it's needed: preparing a staging machine (installing git/Python, cloning the repo), building the offline dependency bundle, transferring it, installing on the air-gapped server, and running the checks. Start here. |
 | [provision-jumpserver.sh](./provision-jumpserver.sh) | **Interactive Azure CLI script** that provisions the management (jump) server. Prompts for subscription, deployment target (hub VNet / DMZ VNet / new VNet), suggests an unused CIDR block and validates it against existing VNets, lets you pick a VM SKU (validated for the region), and creates the VM with a system-assigned managed identity. |
+| [deploy-sap-sim-lab.sh](./deploy-sap-sim-lab.sh) | **Lab builder** for validating the whole process in a hub/spoke ALZ environment: creates subnets with NSGs (policy-compliant), a jump server, and two simulated SAP VMs; auto-detects an available VM SKU; generates the framework workspace files. |
 
 ## Quick start
 
