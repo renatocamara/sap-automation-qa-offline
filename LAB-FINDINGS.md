@@ -53,6 +53,22 @@ The Linux IMDS `uri` task doesn't set `return_content: true` (the Windows varian
 does). On newer ansible-core this can leave the response body unparsed. The patch adds
 it — harmless on older versions, protective on newer ones.
 
+## Issue 4 — Azure-based checks fail with "Please run 'az login'"
+
+**Symptom:** the HTML report shows every Azure collector check as
+`ERROR: Please run 'az login' to setup account`, even though `az login --identity`
+succeeded on the jump server.
+
+**Root cause:** the framework runs Azure collectors with `become: true` (as **root**),
+and Azure CLI sessions are per-user (`~/.azure`). Logging in as the regular user does
+not authenticate root.
+
+**Fix:** log in as root too, before running the checks:
+
+```bash
+sudo az login --identity && sudo az account set --subscription <sub>
+```
+
 ---
 
 ## Debugging technique worth remembering

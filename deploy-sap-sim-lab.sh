@@ -18,6 +18,8 @@
 # Also generates the framework workspace files (hosts.yaml, sap-parameters.yaml)
 # and prints the commands to copy everything to the jump server.
 #
+# Non-interactive mode: AUTO=1 ./deploy-sap-sim-lab.sh  (accepts all defaults)
+#
 # Requirements: az (logged in), python3, ssh-keygen.
 # =============================================================================
 set -euo pipefail
@@ -63,6 +65,7 @@ log "Using subscription: $(az account show --query name -o tsv)"
 # find_vnet <name> -> sets FOUND_SUB / FOUND_RG. Searches the selected
 # subscription first, then every other subscription you can access (in an
 # Azure Landing Zone the hub VNet usually lives in a Connectivity subscription).
+# Uses 'az resource list' because newer Azure CLI requires -g on 'az network vnet list'.
 find_vnet() {
     local vnet="$1" rg sub
     rg=$(az resource list --resource-type Microsoft.Network/virtualNetworks --query "[?name=='$vnet'].resourceGroup" -o tsv 2>/dev/null | head -1)
@@ -150,7 +153,8 @@ fi
 
 # ----------------------------- VM size auto-detection ------------------------
 # Capacity restrictions vary per subscription/region. Test candidates in order
-# and use the first SKU that is actually deployable.
+# (newest generations first) and use the first SKU deployable in BOTH the hub
+# and spoke subscriptions.
 log "Detecting a VM size available in $LOCATION for BOTH the hub and spoke subscriptions..."
 VM_SIZE=""
 for cand in Standard_D2als_v7 Standard_D2ls_v7 Standard_D2as_v7 Standard_D2s_v7 \
@@ -172,3 +176,119 @@ log "Using VM size: $VM_SIZE"
 # Each RG is created in the SAME subscription as the VNet its VMs join.
 az group show -n "$MGMT_RG" --subscription "$HUB_SUB" >/dev/null 2>&1 || \
     az group create -n "$MGMT_RG" -l "$LOCATION" --subscription "$HUB_SUB" >/dev/null
+az group show -n "$SAP_RG" --subscription "$SPOKE_SUB" >/dev/null 2>&1 || \
+    az group create -n "$SAP_RG" -l "$LOCATION" --subscription "$SPOKE_SUB" >/dev/null
+
+HUB_SUBNET_ID=$(az network vnet subnet show -g "$HUB_RG" --vnet-name "$HUB_VNET" -n snet-sapqa-mgmt --subscription "$HUB_SUB" --query id -o tsv)
+SIM_SUBNET_ID=$(az network vnet subnet show -g "$SPOKE_RG" --vnet-name "$SPOKE_VNET" -n snet-sap-sim --subscription "$SPOKE_SUB" --query id -o tsv)
+
+# --nsg "" prevents az from auto-creating a NIC-level NSG with an SSH-from-
+# Internet rule, which ALZ policy "Deny-MgmtPorts-From-Internet" blocks.
+# The subnet NSGs created above govern traffic instead.
+log "Creating jump server vm-sapqa-jump01 (Ubuntu 22.04, $VM_SIZE, no public IP) in $MGMT_RG..."
+az vm create -g "$MGMT_RG" -n vm-sapqa-jump01 -l "$LOCATION" --subscription "$HUB_SUB" \
+    --image Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest \
+    --size "$VM_SIZE" --subnet "$HUB_SUBNET_ID" --public-ip-address "" \
+    --nsg "" --admin-username "$ADMIN_USER" --ssh-key-values "$KEY.pub" \
+    --assign-identity --output none
+
+for VM in vm-sapdb01 vm-sapascs01; do
+    log "Creating simulated SAP VM $VM (SLES 15 SP5, $VM_SIZE, no public IP) in $SAP_RG..."
+    az vm create -g "$SAP_RG" -n "$VM" -l "$LOCATION" --subscription "$SPOKE_SUB" \
+        --image SUSE:sles-15-sp5:gen2:latest \
+        --size "$VM_SIZE" --subnet "$SIM_SUBNET_ID" --public-ip-address "" \
+        --nsg "" --admin-username "$ADMIN_USER" --ssh-key-values "$KEY.pub" --output none
+done
+
+# ----------------------------- RBAC ------------------------------------------
+IDENTITY=$(az vm show -g "$MGMT_RG" -n vm-sapqa-jump01 --subscription "$HUB_SUB" --query identity.principalId -o tsv)
+log "Granting Reader to jump server identity ($IDENTITY)..."
+az role assignment create --assignee "$IDENTITY" --role Reader \
+    --scope "/subscriptions/$SPOKE_SUB/resourceGroups/$SAP_RG" >/dev/null || warn "Reader on $SAP_RG failed (may already exist)."
+az role assignment create --assignee "$IDENTITY" --role Reader \
+    --scope "/subscriptions/$SPOKE_SUB/resourceGroups/$SPOKE_RG" >/dev/null || warn "Reader on $SPOKE_RG failed (optional)."
+az role assignment create --assignee "$IDENTITY" --role Reader \
+    --scope "/subscriptions/$HUB_SUB/resourceGroups/$MGMT_RG" >/dev/null || warn "Reader on $MGMT_RG failed (optional)."
+
+# ----------------------------- workspace files -------------------------------
+JUMP_IP=$(az vm show -g "$MGMT_RG" -n vm-sapqa-jump01 -d --subscription "$HUB_SUB" --query privateIps -o tsv)
+DB_IP=$(az vm show -g "$SAP_RG" -n vm-sapdb01 -d --subscription "$SPOKE_SUB" --query privateIps -o tsv)
+SCS_IP=$(az vm show -g "$SAP_RG" -n vm-sapascs01 -d --subscription "$SPOKE_SUB" --query privateIps -o tsv)
+
+WS="lab-workspace/LAB-EUS2-SAP01-X00"
+mkdir -p "$WS"
+# ansible_python_interpreter: SLES 15 default python3 is 3.6, too old for the
+# framework's ansible-core (needs >= 3.7). Install python311 on the SAP VMs.
+cat > "$WS/hosts.yaml" <<EOF
+X00_DB:
+  hosts:
+    vm-sapdb01:
+      ansible_host: "$DB_IP"
+      ansible_user: "$ADMIN_USER"
+      ansible_connection: "ssh"
+      connection_type: "key"
+      virtual_host: "vm-sapdb01"
+      become_user: "root"
+      os_type: "linux"
+      ansible_python_interpreter: "/usr/bin/python3.11"
+      vm_name: "vm-sapdb01"
+  vars:
+    node_tier: "hana"
+X00_SCS:
+  hosts:
+    vm-sapascs01:
+      ansible_host: "$SCS_IP"
+      ansible_user: "$ADMIN_USER"
+      ansible_connection: "ssh"
+      connection_type: "key"
+      virtual_host: "vm-sapascs01"
+      become_user: "root"
+      os_type: "linux"
+      ansible_python_interpreter: "/usr/bin/python3.11"
+      vm_name: "vm-sapascs01"
+  vars:
+    node_tier: "scs"
+EOF
+
+cat > "$WS/sap-parameters.yaml" <<EOF
+sap_sid: "X00"
+db_sid: "HDB"
+scs_high_availability: false
+database_high_availability: false
+database_scale_out: false
+scs_instance_number: "00"
+ers_instance_number: "01"
+db_instance_number: "00"
+platform: "HANA"
+NFS_provider: "AFS"
+user_assigned_identity_client_id: ""
+EOF
+cp "$KEY" "$WS/ssh_key.ppk" && chmod 600 "$WS/ssh_key.ppk"
+log "Workspace generated at: $WS"
+
+# ----------------------------- summary ---------------------------------------
+echo
+echo "==================== LAB READY ===================="
+echo "  Jump server : vm-sapqa-jump01  $JUMP_IP  (hub/snet-sapqa-mgmt, RG $MGMT_RG)"
+echo "  SAP DB sim  : vm-sapdb01       $DB_IP   (spoke/snet-sap-sim, RG $SAP_RG)"
+echo "  SAP SCS sim : vm-sapascs01     $SCS_IP  (spoke/snet-sap-sim, RG $SAP_RG)"
+echo "  SSH key     : $KEY"
+echo "==================================================="
+echo
+echo "Next steps:"
+echo "  1. Connect to the jump server:"
+echo "       ssh -i $KEY $ADMIN_USER@$JUMP_IP"
+echo "  2. Install python311 on the SAP VMs (SLES default python3 is too old):"
+echo "       ssh -i $KEY $ADMIN_USER@$DB_IP 'sudo zypper install -y python311'"
+echo "       ssh -i $KEY $ADMIN_USER@$SCS_IP 'sudo zypper install -y python311'"
+echo "  3. On the jump server: install the framework (online: scripts/setup.sh —"
+echo "     offline: see the offline installation guide), then apply the framework"
+echo "     fixes: ./apply-framework-fixes.sh ~/sap-automation-qa  (see LAB-FINDINGS.md)"
+echo "  4. Copy the workspace:"
+echo "       scp -i $KEY -r $WS $ADMIN_USER@$JUMP_IP:~/sap-automation-qa/WORKSPACES/SYSTEM/"
+echo "  5. On the jump server: set TEST_TYPE=ConfigurationChecks and"
+echo "     SYSTEM_CONFIG_NAME=LAB-EUS2-SAP01-X00 in vars.yaml, then:"
+echo "       az login --identity && az account set --subscription <spoke-sub>"
+echo "       sudo az login --identity   # Azure-based checks run as root (become)"
+echo "       ./scripts/sap_automation_qa.sh"
+echo "  6. Report: WORKSPACES/SYSTEM/LAB-EUS2-SAP01-X00/quality_assurance/CONFIG_X00_HANA_*.html"
