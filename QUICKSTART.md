@@ -148,25 +148,154 @@ Scenario 1.
 
 > ☁️ **Run on: JUMP SERVER**, inside the `sap-automation-qa` folder cloned in Step 2.
 
+The framework doesn't discover anything by itself — you describe your SAP system in a
+"workspace" folder containing two files (plus credentials, section 5c). Everything
+below is copy-paste ready: paste each block into the terminal as one piece, replacing
+only the UPPERCASE placeholders.
+
+First create the folder. The name is your choice; the convention is
+`ENV-REGION-VNET-SID`, e.g. `PRD-EUS2-SAP01-AMS`:
+
 ```bash
-mkdir -p WORKSPACES/SYSTEM/<ENV-REGION-VNET-SID>
+mkdir -p WORKSPACES/SYSTEM/PRD-EUS2-SAP01-AMS
+cd WORKSPACES/SYSTEM/PRD-EUS2-SAP01-AMS
 ```
 
-Create three files in that folder (full templates in the
-[offline guide, Part 3](./sap-automation-qa-offline-install.md)):
+#### 5a. `hosts.yaml` — which servers to check and how to reach them
 
-- `hosts.yaml` — inventory: each SAP host's IP, SSH user, role (`hana`/`scs`/`app`),
-  and `ansible_python_interpreter: "/usr/bin/python3.11"` per host (see Step 4)
-- `sap-parameters.yaml` — SID, instance numbers, platform (HANA/Db2), HA topology
-- `ssh_key.ppk` — private key the SAP VMs accept (`chmod 600`)
+One entry per SAP VM, grouped by role: `<SID>_DB` (database), `<SID>_SCS` (central
+services), `<SID>_APP` (application servers). Example for SID `AMS` with one of each —
+paste the whole block, then adjust IPs/names (add or remove host entries as needed):
+
+```bash
+cat > hosts.yaml <<'EOF'
+AMS_DB:
+  hosts:
+    SAPDBHOSTNAME:                 # the VM's hostname
+      ansible_host: "10.0.0.10"    # its private IP
+      ansible_user: "azureadm"     # SSH user (must be able to sudo without password)
+      ansible_connection: "ssh"
+      connection_type: "key"
+      virtual_host: "SAPDBHOSTNAME"
+      become_user: "root"
+      os_type: "linux"
+      ansible_python_interpreter: "/usr/bin/python3.11"   # from Step 4
+      vm_name: "AZURE-VM-NAME"     # exactly as shown in the Azure portal
+  vars:
+    node_tier: "hana"
+AMS_SCS:
+  hosts:
+    SAPSCSHOSTNAME:
+      ansible_host: "10.0.0.11"
+      ansible_user: "azureadm"
+      ansible_connection: "ssh"
+      connection_type: "key"
+      virtual_host: "SAPSCSHOSTNAME"
+      become_user: "root"
+      os_type: "linux"
+      ansible_python_interpreter: "/usr/bin/python3.11"
+      vm_name: "AZURE-VM-NAME"
+  vars:
+    node_tier: "scs"
+AMS_APP:
+  hosts:
+    SAPAPPHOSTNAME:
+      ansible_host: "10.0.0.12"
+      ansible_user: "azureadm"
+      ansible_connection: "ssh"
+      connection_type: "key"
+      virtual_host: "SAPAPPHOSTNAME"
+      become_user: "root"
+      os_type: "linux"
+      ansible_python_interpreter: "/usr/bin/python3.11"
+      vm_name: "AZURE-VM-NAME"
+  vars:
+    node_tier: "app"
+EOF
+```
+
+(If your SID is not `AMS`, rename the three group headers accordingly — they must be
+`<SID>_DB`, `<SID>_SCS`, `<SID>_APP` in uppercase.)
+
+#### 5b. `sap-parameters.yaml` — what the SAP system looks like
+
+```bash
+cat > sap-parameters.yaml <<'EOF'
+sap_sid: "AMS"                        # your SAP SID
+db_sid: "HDB"                         # your database SID
+platform: "HANA"                      # HANA / Db2 / ORACLE / SQLSERVER
+scs_high_availability: false          # true if ASCS/ERS is clustered
+database_high_availability: false     # true if DB uses HANA System Replication + cluster
+database_scale_out: false
+scs_instance_number: "00"
+ers_instance_number: "01"
+db_instance_number: "00"
+NFS_provider: "AFS"                   # AFS (Azure Files) or ANF (Azure NetApp Files)
+user_assigned_identity_client_id: ""  # empty = system-assigned identity (Step 1)
+EOF
+```
+
+If HA is `true`, also add `scs_cluster_type`/`database_cluster_type` (`AFA`, `ISCSI`
+or `ASD`) — see the upstream
+[SETUP guide, section 2.2](https://github.com/Azure/sap-automation-qa/blob/main/docs/SETUP.MD#22-system-configuration-workspaces).
+
+#### 5c. Credentials — how the jump server logs into the SAP VMs
+
+Two supported options:
+
+**Option A — Azure Key Vault (recommended, no key file on disk).** If the SSH private
+key (or VM password) is already stored as a Key Vault secret, no credential file is
+needed: grant the jump server's managed identity the *Key Vault Secrets User* role on
+the vault, and add these two lines to `sap-parameters.yaml`:
+
+```yaml
+key_vault_id: /subscriptions/<SUB>/resourceGroups/<RG>/providers/Microsoft.KeyVault/vaults/<VAULT-NAME>
+secret_id: https://<VAULT-NAME>.vault.azure.net/secrets/<SECRET-NAME>/<VERSION>
+```
+
+This is usually the easiest option to get approved by a security team — the key never
+sits on the filesystem and access is audited by Key Vault.
+
+**Option B — local key file.** Place the private key that the SAP VMs accept in the
+workspace, named exactly `ssh_key.ppk`, readable only by you:
+
+```bash
+cp /path/to/your/private-key ssh_key.ppk
+chmod 600 ssh_key.ppk
+```
+
+Context for the security discussion: the jump server is already the controlled
+administrative host where operators SSH to the SAP VMs from — this key (or an
+equivalent one) already lives in that trust zone. But if there's any hesitation,
+use Option A.
+
+Done — return to the framework root before continuing:
+
+```bash
+cd ../../..
+```
 
 ### Step 6 — Configure and authenticate
 
-> ☁️ **Run on: JUMP SERVER** (the managed identity only exists there — these logins
-> fail anywhere else).
+> ☁️ **Run on: JUMP SERVER**, inside the `sap-automation-qa` folder (the managed
+> identity only exists on this VM — these logins fail anywhere else).
+
+`vars.yaml` already exists in the framework folder — you don't create it, you change
+two lines in it: the test type, and the workspace folder name from Step 5. This
+command does both (adjust the name if yours differs):
 
 ```bash
-# vars.yaml: TEST_TYPE: "ConfigurationChecks", SYSTEM_CONFIG_NAME: "<your workspace name>"
+sed -i 's/^TEST_TYPE:.*/TEST_TYPE: "ConfigurationChecks"/; s/^SYSTEM_CONFIG_NAME:.*/SYSTEM_CONFIG_NAME: "PRD-EUS2-SAP01-AMS"/' vars.yaml
+grep -E '^(TEST_TYPE|SYSTEM_CONFIG_NAME)' vars.yaml   # verify: should print the two lines above
+```
+
+(Prefer an editor? `nano vars.yaml`, change the same two lines, Ctrl+O to save,
+Ctrl+X to exit. All other lines in the file can stay as they are.)
+
+Then authenticate — twice, because the framework's Azure collectors run as root and
+Azure CLI sessions are per-user (validated finding, LAB-FINDINGS.md issue 4):
+
+```bash
 az login --identity && az account set --subscription <SAP_SUB_ID>
 sudo az login --identity && sudo az account set --subscription <SAP_SUB_ID>
 ```
