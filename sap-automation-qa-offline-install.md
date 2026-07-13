@@ -11,6 +11,35 @@ machine, transfer one bundle, and install manually.
 
 ---
 
+## The machines involved — read this first
+
+This procedure uses **two different machines**. Every step in this guide is tagged
+with the machine it runs on. Do not mix them up.
+
+| Machine | What it is | Internet? | Used for |
+|---|---|---|---|
+| 💻 **STAGING machine** | Any Linux machine you control — e.g., your laptop running Ubuntu on WSL, or a temporary Azure VM | ✅ Yes | Downloading the framework and all dependencies, packing the bundle (Parts 0–1) |
+| ☁️ **JUMP SERVER** | The management server inside the customer's Azure network, created with `provision-jumpserver.sh` from this repo | ❌ No (only private access to Azure APIs and SSH to the SAP VMs) | Installing the bundle and running the checks (Parts 2–3) |
+
+**The overall flow:**
+
+1. ☁️ Create the jump server in Azure — run `provision-jumpserver.sh` from any
+   machine that has Azure CLI and internet (your laptop with WSL works).
+2. 💻 On the STAGING machine: install the tools and build the bundle (Parts 0 and 1).
+3. 📦 Transfer the single bundle file from the staging machine to the jump server
+   (scp over the internal network, or your approved file-transfer method).
+4. ☁️ On the JUMP SERVER: install everything from the bundle and run the checks
+   (Parts 2 and 3).
+
+> **Critical rule:** the STAGING machine must run the **same Linux distribution,
+> version, and CPU architecture** as the JUMP SERVER, and the same Python version.
+> A bundle built on Ubuntu only installs on Ubuntu; one built on RHEL only on RHEL.
+> Your laptop's WSL Ubuntu is perfect for *practicing* the whole flow — but if the
+> jump server runs RHEL or SLES, build the *real* bundle on a temporary Azure VM of
+> that same OS (delete it afterwards).
+
+---
+
 ## Before you start: one important limitation
 
 The configuration checks validate **Azure infrastructure** (VM SKU, Load Balancer
@@ -42,8 +71,10 @@ SSH (Linux) or WinRM (Windows) from the management server.
 
 ## Part 0 — Prepare the staging machine (first-time setup)
 
-These steps happen on the **internet-connected staging machine** only. If git and
-Python are already installed, skip to Part 1.
+> 💻 **Run on: STAGING machine** (internet-connected — e.g., your laptop with WSL
+> Ubuntu, or a temporary Azure VM matching the jump server's OS).
+
+If git and Python are already installed, skip to Part 1.
 
 ### Step 0.1 — Install git
 
@@ -82,8 +113,14 @@ sudo zypper install -y python311 python311-pip
 Verify:
 
 ```bash
-python3.11 --version    # or: python3 --version
+python3 --version       # 3.10 or higher is OK
 ```
+
+> **Which command to use — `python3` or `python3.11`?** On Ubuntu 22.04 (including
+> WSL), plain `python3` is already 3.10 and works — use `python3` in every command of
+> this guide. On RHEL/SLES, the default `python3` is often too old (3.6/3.9), so
+> install and use `python3.11` explicitly. Whichever you pick, **use the same one in
+> every step of Parts 1 and 2.**
 
 **Why the version matters:** the framework requires Python ≥ 3.10, and the offline
 bundle you build in Part 1 only works with the same Python version on both machines.
@@ -111,7 +148,11 @@ rename the folder to `sap-automation-qa`.
 
 ---
 
-## Part 1 — Build the bundle (on the internet-connected staging machine)
+## Part 1 — Build the bundle
+
+> 💻 **Run on: STAGING machine.** All commands in Part 1 assume your current
+> directory is `~/sapqa-offline` (the folder created in Step 0.3). Run `cd
+> ~/sapqa-offline` first if you're not sure where you are (`pwd` shows you).
 
 ### Step 1.1 — Pack the repository for transfer
 
@@ -128,6 +169,7 @@ deployed.
 ### Step 1.2 — Download all Python packages as wheels
 
 ```bash
+# from ~/sapqa-offline (Ubuntu/WSL: replace python3.11 with python3)
 python3.11 -m pip download -r sap-automation-qa/requirements.in -d wheels/
 ```
 
@@ -188,12 +230,24 @@ tar czf sapqa-offline-bundle.tar.gz sap-automation-qa.tar.gz wheels/ collections
 checksum. Generate one: `sha256sum sapqa-offline-bundle.tar.gz` — verify it after
 transfer to rule out corruption.
 
-Transfer the bundle to the management server via your approved method (internal scp,
-secure file transfer, removable media per policy).
+### Step 1.7 — Transfer the bundle to the jump server
+
+> 📦 **Run on: STAGING machine** (it sends the file **to** the jump server).
+
+```bash
+scp sapqa-offline-bundle.tar.gz <admin-user>@<jump-server-private-ip>:~/
+```
+
+Or use your organization's approved file-transfer method (secure file transfer,
+removable media per policy). Verify the checksum on arrival (Step 2.1).
 
 ---
 
 ## Part 2 — Install on the offline management server
+
+> ☁️ **Run on: JUMP SERVER.** From here on, every command runs on the jump server —
+> connect to it first: `ssh <admin-user>@<jump-server-private-ip>`. Nothing in Parts
+> 2–3 runs on your laptop.
 
 > **Do not run `scripts/setup.sh`.** It curls the Azure CLI installer and contacts
 > PyPI/Galaxy — all of which fail offline. The steps below replicate exactly what it
@@ -226,6 +280,7 @@ tar xzf sap-automation-qa.tar.gz && cd sap-automation-qa
 ### Step 2.4 — Create the virtual environment and install Python packages offline
 
 ```bash
+# use the SAME python command that built the bundle (Ubuntu: python3)
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install --no-index --find-links=../wheels --upgrade pip
@@ -263,6 +318,9 @@ resolve.
 ---
 
 ## Part 3 — Configure and run
+
+> ☁️ **Run on: JUMP SERVER**, inside the `sap-automation-qa` folder, with the virtual
+> environment active (`source .venv/bin/activate` — your prompt shows `(.venv)`).
 
 These steps are identical to the standard online procedure (repo `docs/SETUP.MD` §2 and
 `docs/CONFIGURATION_CHECKS.md`); summarized here for completeness.
@@ -303,9 +361,9 @@ recommendations.
 
 ## Alternative: Docker image transfer
 
-If you prefer containers: on the staging machine run `./scripts/setup.sh container start`,
-then `docker save sap-automation-qa -o sapqa-image.tar`; transfer and
-`docker load -i sapqa-image.tar` on the management server. **Why consider it:** the
+If you prefer containers: 💻 on the STAGING machine run `./scripts/setup.sh container start`,
+then `docker save sap-automation-qa -o sapqa-image.tar`; 📦 transfer the tar file, and
+☁️ on the JUMP SERVER run `docker load -i sapqa-image.tar`. **Why consider it:** the
 image bundles Python and all dependencies, eliminating the OS/Python matching concerns —
 but it requires Docker on the offline server, and the ARM reachability limitation is
 unchanged.
