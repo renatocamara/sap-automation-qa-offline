@@ -115,3 +115,24 @@ az account set --subscription <SUB_ID>
 
 **Deliverable:** `WORKSPACES/SYSTEM/<NAME>/quality_assurance/CONFIG_<SID>_<DB>_<ID>.html`
 — open in a browser, share with Microsoft for review and recommendations.
+
+---
+
+## Known issues — apply BEFORE the first run
+
+Lab-validated fixes for framework v1.1.2 (details in [LAB-FINDINGS.md](./LAB-FINDINGS.md)):
+
+```bash
+# after cloning sap-automation-qa, from this repo:
+./apply-framework-fixes.sh /path/to/sap-automation-qa
+```
+
+And if the SAP VMs run SLES 15 / RHEL 8 (default Python 3.6), add to every host in
+`hosts.yaml`:
+
+```yaml
+ansible_python_interpreter: "/usr/bin/python3.11"
+```
+
+Without these, every Linux run fails at "Prepare system context information" with an
+error hidden behind `no_log`.
