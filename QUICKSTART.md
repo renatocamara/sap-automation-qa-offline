@@ -351,12 +351,37 @@ sessions are per-user (validated finding — see LAB-FINDINGS.md issue 4).
 > ☁️ **Run on: JUMP SERVER**, inside `sap-automation-qa`, with the venv active
 > (`source .venv/bin/activate` — prompt shows `(.venv)`).
 
+The normal case is one command, no parameters — it runs **all** check families
+(VM, storage, network, database, central services, application servers) against
+every host in your `hosts.yaml`:
+
 ```bash
 ./scripts/sap_automation_qa.sh
-# scoped alternatives:
-#   --extra-vars='{"configuration_test_type":"Database"}'
-#   --extra-vars='{"configuration_test_type":"CentralServiceInstances"}'
 ```
+
+The run takes several minutes (it SSHes into each SAP VM and queries Azure). It's
+read-only — nothing on the SAP systems is changed.
+
+**Optional: limiting the scope with `--extra-vars`.** By default the script reads its
+settings from `vars.yaml` (Step 6). `--extra-vars` is a way to pass an extra setting
+just for one run, without editing any file. The only setting worth passing here is
+`configuration_test_type`, which restricts the run to a single check family — useful
+to re-check one area quickly after a fix, or to shorten a first validation:
+
+```bash
+# only database checks (HANA/Db2):
+./scripts/sap_automation_qa.sh --extra-vars='{"configuration_test_type":"Database"}'
+
+# only ASCS/ERS (central services) checks:
+./scripts/sap_automation_qa.sh --extra-vars='{"configuration_test_type":"CentralServiceInstances"}'
+
+# only application server checks:
+./scripts/sap_automation_qa.sh --extra-vars='{"configuration_test_type":"ApplicationInstances"}'
+```
+
+Accepted values: `all` (default), `Database`, `CentralServiceInstances`,
+`ApplicationInstances`, `WebDispatcherInstances`. For the assessment report you share
+with Microsoft, run without parameters (= `all`).
 
 ### Step 8 — Collect the deliverable
 
