@@ -153,6 +153,15 @@ The framework doesn't discover anything by itself — you describe your SAP syst
 below is copy-paste ready: paste each block into the terminal as one piece, replacing
 only the UPPERCASE placeholders.
 
+> **What is a SID?** Every SAP system has a **System ID (SID)** — a unique
+> 3-character uppercase code that identifies it, chosen when the system was
+> installed (e.g. `PRD` for production, `QAS` for quality, or a custom one like
+> `AMS`). The database has its own SID too (**DB SID** — for HANA often `HDB` or
+> matching the system SID). You don't invent these values now: your SAP Basis team
+> knows them, and they appear in the SAP GUI status screen and in directory names on
+> the SAP servers (`/usr/sap/<SID>/`). The examples below use `AMS` as the SAP SID
+> and `HDB` as the DB SID — replace them with yours.
+
 First create the folder. The name is your choice; the convention is
 `ENV-REGION-VNET-SID`, e.g. `PRD-EUS2-SAP01-AMS`:
 
