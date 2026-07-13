@@ -67,7 +67,13 @@ If a proxy is in the path, it must allow: `github.com`, `pypi.org`,
 
 ## Step-by-step
 
-### Step 1 — One-time prerequisites (run from any machine with Azure CLI)
+Every step is tagged with **where it runs**. In Scenario 2 there are only two places:
+🖥️ your **workstation** (any machine with Azure CLI — laptop, Cloud Shell) for the
+one-time Azure setup, and ☁️ the **jump server** (SSH into it first) for everything else.
+
+### Step 1 — One-time prerequisites
+
+> 🖥️ **Run on: your WORKSTATION** (any machine with Azure CLI logged into the subscription — or Azure Cloud Shell).
 
 Enable a managed identity on the jump server VM and grant it **Reader** on every
 resource group containing SAP components (VMs, disks, load balancers, network,
@@ -81,7 +87,10 @@ az role assignment create --assignee <PRINCIPAL_ID> --role Reader \
 
 Also confirm SSH (Linux) or WinRM (Windows) works from the jump server to every SAP VM.
 
-### Step 2 — On the jump server: install the framework
+### Step 2 — Install the framework
+
+> ☁️ **Run on: JUMP SERVER.** Connect first: `ssh <user>@<jump-server-ip>`. Steps 2
+> through 8 all run here.
 
 ```bash
 # if behind a proxy, first: export http_proxy=... https_proxy=...
@@ -94,6 +103,8 @@ source .venv/bin/activate
 
 ### Step 3 — Apply the validated fixes (required — see LAB-FINDINGS.md)
 
+> ☁️ **Run on: JUMP SERVER.**
+
 Without these, every Linux run fails with an error hidden behind `no_log`:
 
 ```bash
@@ -102,6 +113,10 @@ Without these, every Linux run fails with an error hidden behind `no_log`:
 ```
 
 ### Step 4 — Check Python on the SAP servers
+
+> ☁️ **Run on: JUMP SERVER.** The `ssh` commands below are executed *from* the jump
+> server, reaching *into* each SAP VM — you never log in to the SAP VMs directly
+> from your workstation.
 
 The framework requires Python ≥ 3.7 **on the SAP VMs**. SLES 15 / RHEL 8 default to
 3.6. First, just check — recent Azure images often already include a newer
@@ -131,6 +146,8 @@ Scenario 1.
 
 ### Step 5 — Describe the SAP system (workspace)
 
+> ☁️ **Run on: JUMP SERVER**, inside the `sap-automation-qa` folder cloned in Step 2.
+
 ```bash
 mkdir -p WORKSPACES/SYSTEM/<ENV-REGION-VNET-SID>
 ```
@@ -145,6 +162,9 @@ Create three files in that folder (full templates in the
 
 ### Step 6 — Configure and authenticate
 
+> ☁️ **Run on: JUMP SERVER** (the managed identity only exists there — these logins
+> fail anywhere else).
+
 ```bash
 # vars.yaml: TEST_TYPE: "ConfigurationChecks", SYSTEM_CONFIG_NAME: "<your workspace name>"
 az login --identity && az account set --subscription <SAP_SUB_ID>
@@ -156,6 +176,9 @@ sessions are per-user (validated finding — see LAB-FINDINGS.md issue 4).
 
 ### Step 7 — Run
 
+> ☁️ **Run on: JUMP SERVER**, inside `sap-automation-qa`, with the venv active
+> (`source .venv/bin/activate` — prompt shows `(.venv)`).
+
 ```bash
 ./scripts/sap_automation_qa.sh
 # scoped alternatives:
@@ -165,8 +188,16 @@ sessions are per-user (validated finding — see LAB-FINDINGS.md issue 4).
 
 ### Step 8 — Collect the deliverable
 
+> ☁️ Report is generated on the **JUMP SERVER**; copy it to your 🖥️ **workstation**
+> to open it.
+
 ```text
 WORKSPACES/SYSTEM/<NAME>/quality_assurance/CONFIG_<SID>_<DB>_<INVOCATION_ID>.html
+```
+
+```bash
+# from your workstation:
+scp <user>@<jump-server-ip>:"~/sap-automation-qa/WORKSPACES/SYSTEM/<NAME>/quality_assurance/CONFIG_*.html" .
 ```
 
 Open in a browser; share with Microsoft for review and recommendations.
@@ -185,7 +216,7 @@ transferred once.
 Condensed procedure (full detail with per-step explanations in the
 [offline installation guide](./sap-automation-qa-offline-install.md)):
 
-### On the STAGING machine (internet)
+### 💻 Run on: STAGING machine (internet-connected)
 
 ```bash
 mkdir -p ~/sapqa-offline && cd ~/sapqa-offline
@@ -201,7 +232,7 @@ sha256sum sapqa-offline-bundle.tar.gz
 scp sapqa-offline-bundle.tar.gz <user>@<jump-server-ip>:~/
 ```
 
-### On the JUMP SERVER (offline install — do NOT run setup.sh)
+### ☁️ Run on: JUMP SERVER (offline install — do NOT run setup.sh)
 
 ```bash
 sha256sum sapqa-offline-bundle.tar.gz            # compare with staging value
