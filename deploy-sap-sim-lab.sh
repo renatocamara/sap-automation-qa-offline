@@ -28,6 +28,11 @@ err()  { echo -e "\e[1;31m[ERROR]\e[0m $*" >&2; }
 die()  { err "$*"; exit 1; }
 ask() {
     local __var="$1" __q="$2" __def="${3:-}" __ans
+    if [[ "${AUTO:-0}" == "1" && -n "$__def" ]]; then
+        echo "$__q [$__def]: (auto)"
+        printf -v "$__var" '%s' "$__def"
+        return
+    fi
     if [[ -n "$__def" ]]; then read -r -p "$__q [$__def]: " __ans; __ans="${__ans:-$__def}";
     else while true; do read -r -p "$__q: " __ans; [[ -n "$__ans" ]] && break; echo "  A value is required."; done; fi
     printf -v "$__var" '%s' "$__ans"
@@ -60,12 +65,12 @@ log "Using subscription: $(az account show --query name -o tsv)"
 # Azure Landing Zone the hub VNet usually lives in a Connectivity subscription).
 find_vnet() {
     local vnet="$1" rg sub
-    rg=$(az network vnet list --query "[?name=='$vnet'].resourceGroup" -o tsv 2>/dev/null | head -1)
+    rg=$(az resource list --resource-type Microsoft.Network/virtualNetworks --query "[?name=='$vnet'].resourceGroup" -o tsv 2>/dev/null | head -1)
     if [[ -n "$rg" ]]; then FOUND_SUB="$SUBSCRIPTION_ID"; FOUND_RG="$rg"; return 0; fi
     log "VNet '$vnet' not in the selected subscription — searching all accessible subscriptions..."
     while read -r sub; do
         [[ "$sub" == "$SUBSCRIPTION_ID" ]] && continue
-        rg=$(az network vnet list --subscription "$sub" --query "[?name=='$vnet'].resourceGroup" -o tsv 2>/dev/null | head -1)
+        rg=$(az resource list --resource-type Microsoft.Network/virtualNetworks --subscription "$sub" --query "[?name=='$vnet'].resourceGroup" -o tsv 2>/dev/null | head -1)
         if [[ -n "$rg" ]]; then FOUND_SUB="$sub"; FOUND_RG="$rg"; return 0; fi
     done < <(az account list --query "[].id" -o tsv)
     return 1
@@ -82,7 +87,11 @@ SPOKE_SUB="$FOUND_SUB"; SPOKE_RG="$FOUND_RG"
 log "Spoke VNet found: RG=$SPOKE_RG, subscription=$(az account show --subscription "$SPOKE_SUB" --query name -o tsv)"
 
 LOCATION=$(az network vnet show -g "$HUB_RG" -n "$HUB_VNET" --subscription "$HUB_SUB" --query location -o tsv)
-ask LAB_RG     "Resource group for the lab VMs (created if missing)" "rg-sapqa-lab"
+# Azure requires VM/NIC to live in the SAME subscription as their VNet, so the
+# lab uses one RG per side: <base>-mgmt next to the hub, <base>-sap next to the spoke.
+ask LAB_RG     "Base name for the lab resource groups" "rg-sapqa-lab"
+MGMT_RG="${LAB_RG}-mgmt"   # created in the hub's subscription
+SAP_RG="${LAB_RG}-sap"     # created in the spoke's subscription
 ask ADMIN_USER "Admin username for all VMs" "azureadm"
 
 # Verify hub <-> spoke peering
@@ -142,12 +151,16 @@ fi
 # ----------------------------- VM size auto-detection ------------------------
 # Capacity restrictions vary per subscription/region. Test candidates in order
 # and use the first SKU that is actually deployable.
-log "Detecting an available VM size in $LOCATION for this subscription..."
+log "Detecting a VM size available in $LOCATION for BOTH the hub and spoke subscriptions..."
 VM_SIZE=""
-for cand in Standard_DS1_v2 Standard_B2s Standard_B2ms Standard_D2s_v5 Standard_D2s_v4 \
+for cand in Standard_D2als_v7 Standard_D2ls_v7 Standard_D2as_v7 Standard_D2s_v7 \
+            Standard_DS1_v2 Standard_B2s Standard_B2ms Standard_D2s_v5 Standard_D2s_v4 \
             Standard_D2as_v5 Standard_D2as_v4 Standard_D2_v5 Standard_D2_v4 Standard_E2s_v5; do
-    if [[ -n $(az vm list-skus -l "$LOCATION" --size "$cand" --resource-type virtualMachines \
-            --query "[?name=='$cand' && length(restrictions)==\`0\`].name" -o tsv 2>/dev/null) ]]; then
+    ok_hub=$(az vm list-skus -l "$LOCATION" --size "$cand" --resource-type virtualMachines --subscription "$HUB_SUB" \
+            --query "[?name=='$cand' && length(restrictions)==\`0\`].name" -o tsv 2>/dev/null)
+    ok_spk=$(az vm list-skus -l "$LOCATION" --size "$cand" --resource-type virtualMachines --subscription "$SPOKE_SUB" \
+            --query "[?name=='$cand' && length(restrictions)==\`0\`].name" -o tsv 2>/dev/null)
+    if [[ -n "$ok_hub" && -n "$ok_spk" ]]; then
         VM_SIZE="$cand"; break
     fi
 done
@@ -155,105 +168,7 @@ done
 ask VM_SIZE "VM size for all lab VMs" "$VM_SIZE"
 log "Using VM size: $VM_SIZE"
 
-# ----------------------------- resource group + VMs --------------------------
-az group show -n "$LAB_RG" >/dev/null 2>&1 || az group create -n "$LAB_RG" -l "$LOCATION" >/dev/null
-
-HUB_SUBNET_ID=$(az network vnet subnet show -g "$HUB_RG" --vnet-name "$HUB_VNET" -n snet-sapqa-mgmt --subscription "$HUB_SUB" --query id -o tsv)
-SIM_SUBNET_ID=$(az network vnet subnet show -g "$SPOKE_RG" --vnet-name "$SPOKE_VNET" -n snet-sap-sim --subscription "$SPOKE_SUB" --query id -o tsv)
-
-log "Creating jump server vm-sapqa-jump01 (Ubuntu 22.04, $VM_SIZE, no public IP)..."
-az vm create -g "$LAB_RG" -n vm-sapqa-jump01 -l "$LOCATION" \
-    --image Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest \
-    --size "$VM_SIZE" --subnet "$HUB_SUBNET_ID" --public-ip-address "" \
-    --nsg "" --admin-username "$ADMIN_USER" --ssh-key-values "$KEY.pub" \
-    --assign-identity --output none
-
-for VM in vm-sapdb01 vm-sapascs01; do
-    log "Creating simulated SAP VM $VM (SLES 15 SP5, $VM_SIZE, no public IP)..."
-    az vm create -g "$LAB_RG" -n "$VM" -l "$LOCATION" \
-        --image SUSE:sles-15-sp5:gen2:latest \
-        --size "$VM_SIZE" --subnet "$SIM_SUBNET_ID" --public-ip-address "" \
-        --nsg "" --admin-username "$ADMIN_USER" --ssh-key-values "$KEY.pub" --output none
-done
-
-# ----------------------------- RBAC ------------------------------------------
-IDENTITY=$(az vm show -g "$LAB_RG" -n vm-sapqa-jump01 --query identity.principalId -o tsv)
-log "Granting Reader to jump server identity ($IDENTITY)..."
-az role assignment create --assignee "$IDENTITY" --role Reader \
-    --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$LAB_RG" >/dev/null || warn "Reader on $LAB_RG failed (may already exist)."
-az role assignment create --assignee "$IDENTITY" --role Reader \
-    --scope "/subscriptions/$SPOKE_SUB/resourceGroups/$SPOKE_RG" >/dev/null || warn "Reader on $SPOKE_RG failed (optional)."
-
-# ----------------------------- workspace files -------------------------------
-JUMP_IP=$(az vm show -g "$LAB_RG" -n vm-sapqa-jump01 -d --query privateIps -o tsv)
-DB_IP=$(az vm show -g "$LAB_RG" -n vm-sapdb01 -d --query privateIps -o tsv)
-SCS_IP=$(az vm show -g "$LAB_RG" -n vm-sapascs01 -d --query privateIps -o tsv)
-
-WS="lab-workspace/LAB-EUS2-SAP01-X00"
-mkdir -p "$WS"
-cat > "$WS/hosts.yaml" <<EOF
-X00_DB:
-  hosts:
-    vm-sapdb01:
-      ansible_host: "$DB_IP"
-      ansible_user: "$ADMIN_USER"
-      ansible_connection: "ssh"
-      connection_type: "key"
-      virtual_host: "vm-sapdb01"
-      become_user: "root"
-      os_type: "linux"
-      vm_name: "vm-sapdb01"
-  vars:
-    node_tier: "hana"
-X00_SCS:
-  hosts:
-    vm-sapascs01:
-      ansible_host: "$SCS_IP"
-      ansible_user: "$ADMIN_USER"
-      ansible_connection: "ssh"
-      connection_type: "key"
-      virtual_host: "vm-sapascs01"
-      become_user: "root"
-      os_type: "linux"
-      vm_name: "vm-sapascs01"
-  vars:
-    node_tier: "scs"
-EOF
-
-cat > "$WS/sap-parameters.yaml" <<EOF
-sap_sid: "X00"
-db_sid: "HDB"
-scs_high_availability: false
-database_high_availability: false
-database_scale_out: false
-scs_instance_number: "00"
-ers_instance_number: "01"
-db_instance_number: "00"
-platform: "HANA"
-NFS_provider: "AFS"
-user_assigned_identity_client_id: ""
-EOF
-cp "$KEY" "$WS/ssh_key.ppk" && chmod 600 "$WS/ssh_key.ppk"
-log "Workspace generated at: $WS"
-
-# ----------------------------- summary ---------------------------------------
-echo
-echo "==================== LAB READY ===================="
-echo "  Jump server : vm-sapqa-jump01  $JUMP_IP  (hub/snet-sapqa-mgmt)"
-echo "  SAP DB sim  : vm-sapdb01       $DB_IP   (spoke/snet-sap-sim)"
-echo "  SAP SCS sim : vm-sapascs01     $SCS_IP  (spoke/snet-sap-sim)"
-echo "  SSH key     : $KEY"
-echo "==================================================="
-echo
-echo "Next steps:"
-echo "  1. Copy the SSH key and connect to the jump server:"
-echo "       ssh -i $KEY $ADMIN_USER@$JUMP_IP"
-echo "  2. Transfer the offline bundle (or, since this LAB jump server has"
-echo "     outbound Azure access, you may run scripts/setup.sh online to save time)."
-echo "  3. Copy the workspace to the framework on the jump server:"
-echo "       scp -i $KEY -r $WS $ADMIN_USER@$JUMP_IP:~/sap-automation-qa/WORKSPACES/SYSTEM/"
-echo "  4. On the jump server: set TEST_TYPE=ConfigurationChecks and"
-echo "     SYSTEM_CONFIG_NAME=LAB-EUS2-SAP01-X00 in vars.yaml, then:"
-echo "       az login --identity && ./scripts/sap_automation_qa.sh"
-echo "  5. Expect SAP-level checks to fail (no real SAP installed) — the goal is"
-echo "     a generated CONFIG_X00_HANA_*.html report proving the pipeline works."
+# ----------------------------- resource groups + VMs -------------------------
+# Each RG is created in the SAME subscription as the VNet its VMs join.
+az group show -n "$MGMT_RG" --subscription "$HUB_SUB" >/dev/null 2>&1 || \
+    az group create -n "$MGMT_RG" -l "$LOCATION" --subscription "$HUB_SUB" >/dev/null
