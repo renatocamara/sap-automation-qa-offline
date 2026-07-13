@@ -289,25 +289,59 @@ cd ../../..
 > ☁️ **Run on: JUMP SERVER**, inside the `sap-automation-qa` folder (the managed
 > identity only exists on this VM — these logins fail anywhere else).
 
+This step has two parts: **(6a)** tell the framework what to run and against which
+system, and **(6b)** authenticate to Azure.
+
+#### 6a. Edit `vars.yaml` — 2 lines
+
 `vars.yaml` already exists in the framework folder — you don't create it, you change
-two lines in it: the test type, and the workspace folder name from Step 5. This
-command does both (adjust the name if yours differs):
+exactly **two lines** and leave everything else untouched:
+
+| Line | Set it to | Why |
+|---|---|---|
+| `TEST_TYPE:` | `"ConfigurationChecks"` | fixed value — selects the configuration checks (not the HA functional tests) |
+| `SYSTEM_CONFIG_NAME:` | `"PRD-EUS2-SAP01-AMS"` ⚠️ **REPLACE** with the exact folder name you created in Step 5 | tells the framework which workspace to use |
+
+The command below does both — **before running it, replace `PRD-EUS2-SAP01-AMS`**
+with your workspace folder name (it must match Step 5 exactly, including uppercase):
 
 ```bash
 sed -i 's/^TEST_TYPE:.*/TEST_TYPE: "ConfigurationChecks"/; s/^SYSTEM_CONFIG_NAME:.*/SYSTEM_CONFIG_NAME: "PRD-EUS2-SAP01-AMS"/' vars.yaml
-grep -E '^(TEST_TYPE|SYSTEM_CONFIG_NAME)' vars.yaml   # verify: should print the two lines above
 ```
 
-(Prefer an editor? `nano vars.yaml`, change the same two lines, Ctrl+O to save,
-Ctrl+X to exit. All other lines in the file can stay as they are.)
+Verify it worked — this must print your two lines:
 
-Then authenticate — twice, because the framework's Azure collectors run as root and
-Azure CLI sessions are per-user (validated finding, LAB-FINDINGS.md issue 4):
+```bash
+grep -E '^(TEST_TYPE|SYSTEM_CONFIG_NAME)' vars.yaml
+```
+
+Expected output:
+
+```text
+TEST_TYPE: "ConfigurationChecks"
+SYSTEM_CONFIG_NAME: "PRD-EUS2-SAP01-AMS"
+```
+
+(Prefer an editor? `nano vars.yaml`, change the same two lines, Ctrl+O + Enter to
+save, Ctrl+X to exit.)
+
+#### 6b. Log in to Azure — twice
+
+⚠️ **REPLACE `<SAP_SUB_ID>`** in both lines with the subscription ID that contains
+your SAP resources (find it with `az account list -o table`, or in the Azure portal
+under Subscriptions). Nothing else in these commands changes:
 
 ```bash
 az login --identity && az account set --subscription <SAP_SUB_ID>
 sudo az login --identity && sudo az account set --subscription <SAP_SUB_ID>
 ```
+
+Why twice? `az login --identity` authenticates using the VM's managed identity from
+Step 1 — no password involved. But Azure CLI sessions are stored per Linux user, and
+the framework's Azure checks run as **root** — so root needs its own login (validated
+finding, see LAB-FINDINGS.md issue 4). Skipping the `sudo` line doesn't stop the run,
+but every Azure infrastructure check in the report will show
+"Please run 'az login'" instead of results.
 
 Both logins are needed: the framework's Azure collectors run as root, and Azure CLI
 sessions are per-user (validated finding — see LAB-FINDINGS.md issue 4).
