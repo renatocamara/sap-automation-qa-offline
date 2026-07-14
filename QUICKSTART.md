@@ -343,9 +343,6 @@ finding, see LAB-FINDINGS.md issue 4). Skipping the `sudo` line doesn't stop the
 but every Azure infrastructure check in the report will show
 "Please run 'az login'" instead of results.
 
-Both logins are needed: the framework's Azure collectors run as root, and Azure CLI
-sessions are per-user (validated finding — see LAB-FINDINGS.md issue 4).
-
 ### Step 7 — Run
 
 > ☁️ **Run on: JUMP SERVER**, inside `sap-automation-qa`, with the venv active

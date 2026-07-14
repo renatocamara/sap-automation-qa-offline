@@ -22,20 +22,23 @@ the full step-by-step procedure.
 | File | Description |
 |---|---|
 | [QUICKSTART.md](./QUICKSTART.md) | **Start here.** Background on why this documentation exists, then the primary path — Scenario 2: existing jump server WITH internet (scenario explanation + [dedicated architecture diagram](./architecture-online.svg) + 8-step command sequence, including the validated fixes). Scenario 1 (air-gapped, staging machine + offline bundle) kept as fallback. |
-| [sap-automation-qa-offline-install.md](./sap-automation-qa-offline-install.md) | **Step-by-step offline installation guide** (deep reference for Scenario 1). Explains every step and why it's needed: preparing a staging machine (installing git/Python, cloning the repo), building the offline dependency bundle, transferring it, installing on the air-gapped server, and running the checks. Start here. |
+| [sap-automation-qa-offline-install.md](./sap-automation-qa-offline-install.md) | **Step-by-step offline installation guide** (deep reference for Scenario 1). Explains every step and why it's needed: preparing a staging machine (installing git/Python, cloning the repo), building the offline dependency bundle, transferring it, installing on the air-gapped server, and running the checks. |
 | [provision-jumpserver.sh](./provision-jumpserver.sh) | **Interactive Azure CLI script** that provisions the management (jump) server. Prompts for subscription, deployment target (hub VNet / DMZ VNet / new VNet), suggests an unused CIDR block and validates it against existing VNets, lets you pick a VM SKU (validated for the region), and creates the VM with a system-assigned managed identity. |
 | [deploy-sap-sim-lab.sh](./deploy-sap-sim-lab.sh) | **Lab builder** for validating the whole process in a hub/spoke ALZ environment: creates subnets with NSGs (policy-compliant), a jump server, and two simulated SAP VMs; auto-detects an available VM SKU; generates the framework workspace files. |
 
 ## Quick start
 
+Already have a jump server? Go straight to **[QUICKSTART.md](./QUICKSTART.md)** —
+Scenario 2 (jump server with internet) is the primary 8-step path; Scenario 1
+(air-gapped) is the documented fallback.
+
+Need to create a jump server first?
+
 ```bash
-# On any machine with Azure CLI + python3, to provision the jump server:
+# On any machine with Azure CLI + python3:
 chmod +x provision-jumpserver.sh
 ./provision-jumpserver.sh
 ```
-
-Then follow the [offline installation guide](./sap-automation-qa-offline-install.md)
-to install and run the framework on that server.
 
 ## Key facts
 
