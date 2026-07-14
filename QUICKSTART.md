@@ -16,6 +16,11 @@ ExpressRoute. The procedure was validated end to end in a lab replica, including
 fixes for real framework issues found during validation
 ([LAB-FINDINGS.md](./LAB-FINDINGS.md)).
 
+> **This guide assumes you already have an offline jump server** — that is the
+> customer's situation. You do **not** create any VMs here. (Only if you want to
+> *reproduce* the whole scenario from scratch in Azure for testing/rehearsal, there
+> is a helper script — see [LAB.md](./LAB.md). It is not part of this procedure.)
+
 ## ❓ Does anything get installed on the SAP servers?
 
 Answering this first because it's the most important question for any SAP owner:
@@ -258,11 +263,6 @@ The framework doesn't discover anything by itself — you describe the SAP syste
 a "workspace" folder: two files plus credentials. Everything below is copy-paste
 ready; replace only the UPPERCASE placeholders.
 
-> **Lab note:** if you're using the `deploy-sap-sim-lab.sh` lab, this workspace was
-> already generated for you (with the sim IPs and key) under `lab-workspace/` on the
-> machine that ran the script — just `scp` that folder into
-> `WORKSPACES/SYSTEM/` on the jump instead of recreating it. The steps below are how
-> a real customer builds it by hand.
 
 > **What is a SID?** Every SAP system has a **System ID (SID)** — a unique
 > 3-character uppercase code chosen when the system was installed (e.g. `PRD`,

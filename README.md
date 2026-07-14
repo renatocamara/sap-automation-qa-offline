@@ -21,10 +21,11 @@ the laptop and shared with Microsoft. Full procedure:
 
 | File | Description |
 |---|---|
-| [QUICKSTART.md](./QUICKSTART.md) | **Start here.** Background, the "does anything get installed on SAP?" answer, the environment ([diagram](./architecture-onprem.svg)), the Azure-endpoints decision test, and the 9-step offline procedure: laptop downloads bundle → scp to jump server → offline install + validated fixes → checks → report back to laptop. |
-| [sap-automation-qa-offline-install.md](./sap-automation-qa-offline-install.md) | **Deep-dive reference** for the offline installation. Explains the *why* behind each step: preparing the internet-connected download machine (the operator laptop, in this environment), building the offline dependency bundle, transferring it, installing on the air-gapped jump server, and running the checks. |
-| [provision-jumpserver.sh](./provision-jumpserver.sh) | **Interactive Azure CLI script** that provisions the management (jump) server. Prompts for subscription, deployment target (hub VNet / DMZ VNet / new VNet), suggests an unused CIDR block and validates it against existing VNets, lets you pick a VM SKU (validated for the region), and creates the VM with a system-assigned managed identity. |
-| [deploy-sap-sim-lab.sh](./deploy-sap-sim-lab.sh) | **Lab builder** for validating the whole process in a hub/spoke ALZ environment: creates subnets with NSGs (policy-compliant), a jump server, and two simulated SAP VMs; auto-detects an available VM SKU; generates the framework workspace files. |
+| [QUICKSTART.md](./QUICKSTART.md) | **Start here — the customer procedure.** Assumes an existing offline jump server. Background, the "does anything get installed on SAP?" answer, the environment ([diagram](./architecture-onprem.svg)), and the step-by-step: laptop downloads bundle → scp to jump server → offline install + validated fixes → checks → report back to laptop. |
+| [LAB-FINDINGS.md](./LAB-FINDINGS.md) | The real issues found and fixed while validating the procedure end to end, each with root cause and fix. |
+| [sap-automation-qa-offline-install.md](./sap-automation-qa-offline-install.md) | **Deep-dive reference** for the offline installation — the *why* behind each step. |
+| [LAB.md](./LAB.md) + [deploy-sap-sim-lab.sh](./deploy-sap-sim-lab.sh) | **Optional — for testing only, not part of the customer procedure.** A helper that builds a throwaway Azure lab (offline RHEL 9 jump + two RHEL 8.10/Python 3.6 SAP sims) to reproduce and rehearse the whole scenario from scratch. |
+| [provision-jumpserver.sh](./provision-jumpserver.sh) | Optional Azure CLI script to provision a jump server VM (for anyone who needs to create one). Not needed when a jump server already exists. |
 
 ## Quick start
 
