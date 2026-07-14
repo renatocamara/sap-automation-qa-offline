@@ -199,7 +199,11 @@ pip install --no-index --find-links=../wheels --upgrade pip
 pip install --no-index --find-links=../wheels -r requirements.in
 
 mkdir -p .ansible/collections
-ansible-galaxy collection install -r ../collections_offline/requirements.yml -p .ansible/collections
+# ansible-galaxy resolves the downloaded tarballs relative to the CURRENT directory,
+# so install FROM the collections_offline folder (✅ offline dry-run finding —
+# running it from here with a relative path fails with "Could not find *.tar.gz"):
+COLL_DIR="$PWD/.ansible/collections"
+( cd ../collections_offline && ansible-galaxy collection install -r requirements.yml -p "$COLL_DIR" )
 export ANSIBLE_COLLECTIONS_PATH="$PWD/.ansible/collections"
 export ANSIBLE_HOST_KEY_CHECKING=False
 export ANSIBLE_PYTHON_INTERPRETER=$(which python3)

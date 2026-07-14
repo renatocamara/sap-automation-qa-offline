@@ -112,6 +112,24 @@ ran the full playbook: the `az login` task failed and was made non-fatal by the 
 (`localhost: rescued=1 ignored=1`), all OS/SAP checks ran (`failed=0`), and the HTML
 report was generated — with no Azure authentication at all.
 
+## Issue 8 — offline collections install fails from the wrong directory
+
+**Symptom (offline dry-run):** `ansible-galaxy collection install -r
+../collections_offline/requirements.yml -p .ansible/collections` fails with
+`Could not find ansible-netcommon-8.5.3.tar.gz` / "not an FQCN".
+
+**Root cause:** `ansible-galaxy collection download` writes a `requirements.yml` that
+references each collection by its **tarball filename**. On install, `ansible-galaxy`
+looks for those tarballs relative to the **current working directory**, not relative
+to the requirements.yml. Run from the framework root, it can't find them (they live
+in `../collections_offline/`).
+
+**Fix:** install from inside the `collections_offline` folder (QUICKSTART Step 4 now
+does this via a subshell): `( cd ../collections_offline && ansible-galaxy collection
+install -r requirements.yml -p "$COLL_DIR" )`. Not caught by the Cloud Shell lab run
+because that jump had outbound access and pulled collections from Galaxy directly —
+only a truly offline jump exposes it.
+
 ## Issue 7 — `pip install` blocked on the download laptop (PEP 668)
 
 **Symptom (laptop dry-run):** on a modern Ubuntu/Debian laptop (Python 3.11+),
