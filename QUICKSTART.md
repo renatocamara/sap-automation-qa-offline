@@ -75,13 +75,48 @@ one-time Azure setup, and ☁️ the **jump server** (SSH into it first) for eve
 
 > 🖥️ **Run on: your WORKSTATION** (any machine with Azure CLI logged into the subscription — or Azure Cloud Shell).
 
-Enable a managed identity on the jump server VM and grant it **Reader** on every
-resource group containing SAP components (VMs, disks, load balancers, network,
-shared storage):
+The framework reads your Azure resource settings (VMs, disks, load balancers,
+network) using a **managed identity** — an identity that belongs to the jump server
+VM itself, so no passwords or keys are involved. Setting it up is two commands, and
+**the first command produces the ID that the second command needs.**
+
+**Command 1 — enable the identity on the jump server VM.**
+⚠️ REPLACE `<JUMP_RG>` and `<JUMP_VM>` with the jump server's resource group and VM name:
 
 ```bash
 az vm identity assign -g <JUMP_RG> -n <JUMP_VM>
+```
+
+Expected output — note the `principalId`, that's the value you'll use next:
+
+```json
+{
+  "systemAssignedIdentity": "d4f8a1b2-3c5e-4f6a-9b7c-1234567890ab",
+  ...
+}
+```
+
+(The `systemAssignedIdentity` GUID **is** the principal ID. If you need to look it up
+again later: `az vm show -g <JUMP_RG> -n <JUMP_VM> --query identity.principalId -o tsv`)
+
+**Command 2 — grant that identity read access to the SAP resources.**
+⚠️ REPLACE `<PRINCIPAL_ID>` with the GUID from command 1, and `<SUB_ID>`/`<SAP_RG>`
+with the subscription and resource group where the SAP resources live:
+
+```bash
 az role assignment create --assignee <PRINCIPAL_ID> --role Reader \
+  --scope /subscriptions/<SUB_ID>/resourceGroups/<SAP_RG>
+```
+
+Repeat command 2 once per resource group if your SAP components (VMs, disks, load
+balancers, shared storage) are spread across several. **Reader** = view-only: the
+identity can inspect configurations but can never change anything.
+
+Tip — do both in one shot, letting the shell carry the ID over:
+
+```bash
+PRINCIPAL_ID=$(az vm identity assign -g <JUMP_RG> -n <JUMP_VM> --query systemAssignedIdentity -o tsv)
+az role assignment create --assignee "$PRINCIPAL_ID" --role Reader \
   --scope /subscriptions/<SUB_ID>/resourceGroups/<SAP_RG>
 ```
 
