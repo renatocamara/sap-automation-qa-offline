@@ -25,22 +25,16 @@ Answering this first because it's the most important question for any SAP owner:
   over SSH. During a check, Ansible (the engine underneath) temporarily copies small
   Python scripts to a temp directory on the server, executes them **read-only**,
   and removes them — standard agentless behavior, nothing persists.
-- **One possible prerequisite is the exception:** the SAP servers run Python 3.6
-  (RHEL 8.10 default), and recent versions of the framework's engine require
-  Python ≥ 3.7 on the machines they inspect. Two ways to handle it:
-  - **Preferred — zero changes on the SAP servers:** pin the engine to
-    `ansible-core 2.16` (installed only on the jump server, part of the bundle),
-    which still supports Python 3.6 targets. *This option is currently being
-    validated in our lab replica (RHEL 8.10 + Python 3.6); this guide will be
-    confirmed/updated with the result.*
-  - **Fallback — install `python3.11` once on each SAP server** (Step 5): the
-    standard RPM from Red Hat, installed **side by side** — it does not change the
-    system default Python, replaces no existing library, restarts no service, and
-    touches no SAP component. Rollback is a clean `dnf remove python3.11`.
-    Production discipline still applies: change window, and run on a
-    non-production SAP system (DEV/QAS) first.
-  Permissions needed in the fallback case: a user with `sudo` on each SAP server,
-  for that one install.
+- **The Python version, handled without touching the SAP servers (✅ lab-validated):**
+  the SAP servers run Python 3.6 (RHEL 8.10 default), and the newest framework engine
+  requires Python ≥ 3.7 on the machines it inspects. The fix lives **entirely on the
+  jump server**: pin the engine to `ansible-core 2.16` (part of the bundle), which
+  still supports Python 3.6 targets. In our lab replica (RHEL 8.10 + Python 3.6), the
+  full checks ran with zero failures and generated the report — **nothing installed
+  on the SAP servers.** This is the default this guide follows (Step 2 pins it).
+  - *Fallback only if a future framework version drops 2.16 support:* install
+    `python3.11` on each SAP server (additive RPM, no default change, no service
+    restart, `sudo` required, DEV/QAS first). Not needed today.
 - **Permissions for the checks themselves:** an SSH user on each SAP server able to
   `sudo` to root without password (used to read configurations only).
 
@@ -99,12 +93,13 @@ servers. Every step is tagged.
 
 > ☁️ **Run on: JUMP SERVER.**
 
-The framework needs **Python 3.11**, pip and sshpass on the jump server (RHEL 9's
-default is Python 3.9, too old to run the framework's engine). First check whether
-the jump server can reach the Red Hat channel:
+The framework needs **Python 3.11, git, pip and sshpass** on the jump server (RHEL 9's
+default is Python 3.9, too old to run the framework's engine; git is not installed by
+default either — ✅ both confirmed in the lab). First check whether the jump server can
+reach the Red Hat channel:
 
 ```bash
-sudo dnf install -y python3.11 python3.11-pip sshpass && python3.11 --version
+sudo dnf install -y python3.11 python3.11-pip git sshpass && python3.11 --version
 ```
 
 - **If it succeeds** (3.11.x prints): done, go to Step 2.
@@ -133,19 +128,22 @@ tar czf sap-automation-qa.tar.gz sap-automation-qa
 tar czf tools.tar.gz tools
 
 # 2. Python dependencies (~100 packages), targeting the jump server's platform:
-#    Linux x86_64 + Python 3.11 — regardless of what the laptop runs
-python3 -m pip download -r sap-automation-qa/requirements.in -d wheels/ \
+#    Linux x86_64 + Python 3.11 — regardless of what the laptop runs.
+#    The ansible-core<2.17 constraint is what lets the checks run against the SAP
+#    servers' Python 3.6 WITHOUT installing anything on them (✅ lab-validated).
+echo 'ansible-core<2.17' > constraints.txt
+python3 -m pip download -r sap-automation-qa/requirements.in -c constraints.txt -d wheels/ \
   --platform manylinux2014_x86_64 --python-version 3.11 --only-binary=:all:
 
 # 3. Ansible collections
 python3 -m pip install --user ansible-core
 ansible-galaxy collection download -r sap-automation-qa/collections/requirements.yml -p collections_offline/
 
-# 4. python3.11 RPMs for the JUMP SERVER (only needed if Step 1's dnf failed —
-#    i.e. the jump server can't reach Red Hat's RHUI). Skip if Step 1 succeeded.
-#    These must be RHEL/EL 9 RPMs (matching the jump server). Download them on a
-#    RHEL 9 machine with a Red Hat subscription:
-#      mkdir -p jump_rpms && dnf download --resolve --destdir=jump_rpms/ python3.11 python3.11-pip sshpass
+# 4. python3.11 + git RPMs for the JUMP SERVER (only needed if Step 1's dnf failed —
+#    i.e. the jump server can't reach Red Hat's RHUI; ✅ common in ALZ/on-prem).
+#    Skip if Step 1 succeeded. Must be RHEL/EL 9 RPMs (matching the jump server),
+#    downloaded on a RHEL 9 machine with a Red Hat subscription:
+#      mkdir -p jump_rpms && dnf download --resolve --destdir=jump_rpms/ python3.11 python3.11-pip git sshpass
 #    (If the laptop isn't RHEL 9, get them from the Red Hat customer portal or a
 #    RHEL 9 VM; keep them in ./jump_rpms/ so they ride along in the bundle.)
 

@@ -33,17 +33,21 @@ ansible_python_interpreter: "/usr/bin/python3.11"
 default change, no library replaced, no service restart, rollback =
 `dnf remove python3.11`). Still: change window + non-prod SAP system first.
 
-**Fix (option B — zero changes on SAP servers, under lab validation):** pin the
-bundle to `ansible-core<2.17` — version 2.16 still supports Python 3.6 targets, so
-nothing needs to be installed on the SAP servers. Constraint at bundle build time:
+**Fix (option B — zero changes on SAP servers) ✅ VALIDATED 2026-07-13:** pin the
+bundle to `ansible-core<2.17`. Version 2.16 still supports Python 3.6 targets, so
+**nothing needs to be installed on the SAP servers**. Constraint at bundle build time:
 
 ```bash
 echo 'ansible-core<2.17' > constraints.txt
 python3 -m pip download -r sap-automation-qa/requirements.in -c constraints.txt -d wheels/ ...
 ```
 
-Status: to be validated in the lab (RHEL 8.10 / Python 3.6 SAP sims) before
-recommending to the customer.
+**Lab evidence:** ansible-core **2.16.19** on the jump ran the full checks against two
+**RHEL 8.10 / Python 3.6** SAP sims (no `ansible_python_interpreter` set) with
+`failed=0` on every host, and generated the HTML report. This is the recommended
+approach for the customer: it avoids touching the production SAP servers entirely.
+Option A (install python3.11 on the SAP servers) remains the fallback if a future
+framework version drops ansible-core 2.16 compatibility.
 
 ## Issue 2 — Skipped Windows IMDS task clobbers the Linux result (upstream bug)
 
@@ -103,8 +107,19 @@ state). If Azure coverage is required, the network team must allow
 `login.microsoftonline.com` + `management.azure.com` and a **service principal**
 (not managed identity) is used — see QUICKSTART Step 6b.
 
-**Status:** unlike issues 1–4, this one was NOT yet validated in the lab (our lab
-jump server is an Azure VM). Validate on first customer run.
+**Status:** ✅ VALIDATED 2026-07-13. A jump server **without any managed identity**
+ran the full playbook: the `az login` task failed and was made non-fatal by the fix
+(`localhost: rescued=1 ignored=1`), all OS/SAP checks ran (`failed=0`), and the HTML
+report was generated — with no Azure authentication at all.
+
+## Issue 6 — `git` missing on the jump server (RHEL 9)
+
+**Symptom:** the offline install / framework clone fails with `git: command not
+found`. RHEL 9 does not ship git by default.
+
+**Fix:** include `git` in the jump-server prerequisites (QUICKSTART Step 1). If the
+jump can't reach the Red Hat channel, add the `git` RPMs to the bundle alongside
+`python3.11` (Step 2).
 
 ---
 
