@@ -267,9 +267,17 @@ ready; replace only the UPPERCASE placeholders.
 > **What is a SID?** Every SAP system has a **System ID (SID)** — a unique
 > 3-character uppercase code chosen when the system was installed (e.g. `PRD`,
 > `QAS`). The database has its own **DB SID** (for HANA often `HDB`). Don't invent
-> them: the SAP Basis team knows them, and they appear in the SAP GUI status screen
-> and in `/usr/sap/<SID>/` on the servers. Examples below use `AMS`/`HDB` — replace
-> with yours.
+> them — find the real value: the SAP Basis team knows it, or read it off a SAP
+> server directly:
+>
+> ```bash
+> ssh <user>@<sap-server> 'ls /usr/sap/ | grep -vE "SYS|tmp|hostctrl|hostexec"'
+> # each 3-letter entry is a SID; or list the sidadm OS users:
+> ssh <user>@<sap-server> 'getent passwd | grep -oE "^[a-z0-9]{3}adm" | sort -u'
+> ```
+>
+> Examples below use `AMS`/`HDB` — replace with yours. (In this lab there is no real
+> SAP installed, so the deploy script uses the placeholder SID `X00`.)
 
 ```bash
 mkdir -p WORKSPACES/SYSTEM/PRD-EUS2-SAP01-AMS
@@ -282,7 +290,10 @@ One entry per SAP server, grouped by role: `<SID>_DB` (database), `<SID>_SCS`
 (central services), `<SID>_APP` (application servers). Adjust IPs/names; add or
 remove hosts:
 
-```bash
+# NOTE: the `ansible_python_interpreter` line is COMMENTED OUT on purpose — the
+# default path (option B, ansible-core 2.16) uses the SAP servers' own Python 3.6,
+# so no interpreter override is needed. Uncomment it ONLY if you did the Step 5
+# fallback and installed python3.11 on the SAP servers.
 cat > hosts.yaml <<'EOF'
 AMS_DB:
   hosts:
@@ -294,7 +305,7 @@ AMS_DB:
       virtual_host: "SAPDBHOSTNAME"
       become_user: "root"
       os_type: "linux"
-      ansible_python_interpreter: "/usr/bin/python3.11"   # from Step 5
+      # ansible_python_interpreter: "/usr/bin/python3.11"   # ONLY if you did Step 5 (fallback)
       vm_name: "AZURE-VM-NAME"     # exactly as in the Azure portal
   vars:
     node_tier: "hana"
@@ -308,7 +319,7 @@ AMS_SCS:
       virtual_host: "SAPSCSHOSTNAME"
       become_user: "root"
       os_type: "linux"
-      ansible_python_interpreter: "/usr/bin/python3.11"
+      # ansible_python_interpreter: "/usr/bin/python3.11"   # ONLY if you did Step 5 (fallback)
       vm_name: "AZURE-VM-NAME"
   vars:
     node_tier: "scs"
@@ -322,7 +333,7 @@ AMS_APP:
       virtual_host: "SAPAPPHOSTNAME"
       become_user: "root"
       os_type: "linux"
-      ansible_python_interpreter: "/usr/bin/python3.11"
+      # ansible_python_interpreter: "/usr/bin/python3.11"   # ONLY if you did Step 5 (fallback)
       vm_name: "AZURE-VM-NAME"
   vars:
     node_tier: "app"
