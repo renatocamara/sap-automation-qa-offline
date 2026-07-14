@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="800" viewBox="0 0 1400 800" font-family="Segoe UI, Arial, sans-serif">
+<rect width="1400" height="800" fill="#ffffff"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#605e5c" stroke-width="1.6"/></marker>
+<marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#107c10" stroke-width="1.6"/></marker>
+<marker id="o" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#ba7517" stroke-width="1.6"/></marker>
+<marker id="p" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#7719aa" stroke-width="1.6"/></marker></defs>
+<text x="30" y="34" font-size="20" font-weight="700" fill="#252423">SAP configuration checks — offline execution from the on-premises jump server</text>
+
+<rect x="340" y="70" width="330" height="66" rx="6" fill="#faf9f8" stroke="#c8c6c4"/>
+<text x="360" y="96" font-size="13" font-weight="600" fill="#252423">Public sources (internet)</text>
+<text x="360" y="113" font-size="11" fill="#605e5c">GitHub · PyPI · Ansible Galaxy</text>
+
+<rect x="30" y="180" width="560" height="440" rx="8" fill="none" stroke="#8a8886" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="44" y="171" width="130" height="18" fill="#ffffff"/><text x="50" y="185" font-size="14" font-weight="600" fill="#605e5c">On-premises</text>
+
+<rect x="60" y="240" width="220" height="86" rx="6" fill="#fff8ef" stroke="#ba7517"/>
+<text x="80" y="266" font-size="13" font-weight="600" fill="#252423">Operator laptop</text>
+<text x="80" y="283" font-size="11" fill="#605e5c">HAS internet access</text>
+<text x="80" y="299" font-size="11" fill="#ba7517" font-weight="600">downloads the offline bundle</text>
+<text x="80" y="315" font-size="11" fill="#605e5c">SSH client to the jump server</text>
+
+<rect x="350" y="240" width="210" height="96" rx="6" fill="#eef3fb" stroke="#0078d4"/>
+<text x="370" y="266" font-size="13" font-weight="600" fill="#252423">Jump server</text>
+<text x="370" y="283" font-size="11" fill="#605e5c">RHEL 9 · on-premises</text>
+<text x="370" y="299" font-size="11" fill="#605e5c">installs &amp; runs the framework</text>
+<text x="370" y="316" font-size="11" fill="#a4262c" font-weight="600">no internet · no Azure portal</text>
+
+<path d="M395 70 L200 70 L170 232" fill="none" stroke="#ba7517" stroke-width="1.6" marker-end="url(#o)"/>
+<text x="150" y="150" font-size="11.5" font-weight="600" fill="#ba7517">1. download framework +</text>
+<text x="150" y="166" font-size="11.5" font-weight="600" fill="#ba7517">dependencies (bundle)</text>
+
+<line x1="280" y1="288" x2="342" y2="288" stroke="#ba7517" stroke-width="1.6" marker-end="url(#o)"/>
+<text x="311" y="276" font-size="11.5" font-weight="600" fill="#ba7517" text-anchor="middle">2. scp</text>
+<text x="311" y="304" font-size="10.5" fill="#605e5c" text-anchor="middle">bundle</text>
+
+<line x1="280" y1="320" x2="342" y2="320" stroke="#605e5c" stroke-width="1" stroke-dasharray="3 3"/>
+<text x="311" y="334" font-size="10" fill="#605e5c" text-anchor="middle">ssh (operator)</text>
+
+<rect x="60" y="480" width="500" height="100" rx="6" fill="#fdf3f4" stroke="#a4262c"/>
+<text x="80" y="508" font-size="13" font-weight="600" fill="#a4262c">Blocked from the jump server and from the SAP servers</text>
+<text x="80" y="527" font-size="11" fill="#605e5c">internet · Azure portal · login.microsoftonline.com · management.azure.com*</text>
+<text x="80" y="545" font-size="10.5" fill="#605e5c" font-style="italic">*to confirm with the network team — determines whether the Azure infrastructure</text>
+<text x="80" y="560" font-size="10.5" fill="#605e5c" font-style="italic">checks can run (see the decision test in the documentation)</text>
+
+<rect x="760" y="180" width="610" height="440" rx="8" fill="none" stroke="#0078d4" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="774" y="171" width="60" height="18" fill="#ffffff"/><text x="780" y="185" font-size="14" font-weight="600" fill="#0078d4">Azure</text>
+
+<rect x="800" y="250" width="240" height="80" rx="6" fill="#f0f7f0" stroke="#107c10"/>
+<text x="820" y="278" font-size="13" font-weight="600" fill="#252423">SAP-1 (database)</text>
+<text x="820" y="296" font-size="11" fill="#605e5c">RHEL 8.10 · Python 3.6</text>
+<text x="820" y="312" font-size="11" fill="#605e5c">no internet</text>
+
+<rect x="1090" y="250" width="240" height="80" rx="6" fill="#f0f7f0" stroke="#107c10"/>
+<text x="1110" y="278" font-size="13" font-weight="600" fill="#252423">SAP-2 (central services)</text>
+<text x="1110" y="296" font-size="11" fill="#605e5c">RHEL 8.10 · Python 3.6</text>
+<text x="1110" y="312" font-size="11" fill="#605e5c">no internet</text>
+
+<rect x="940" y="400" width="240" height="80" rx="6" fill="#f0f7f0" stroke="#107c10"/>
+<text x="960" y="428" font-size="13" font-weight="600" fill="#252423">SAP-3 (application)</text>
+<text x="960" y="446" font-size="11" fill="#605e5c">RHEL 8.10 · Python 3.6</text>
+<text x="960" y="462" font-size="11" fill="#605e5c">no internet</text>
+
+<text x="800" y="540" font-size="11" fill="#605e5c">OS packages for the SAP servers come from Red Hat's private channel</text>
+<text x="800" y="556" font-size="11" fill="#605e5c">(RHUI / Satellite) — the same one that delivers their security patches.</text>
+
+<path d="M660 400 L755 400" fill="none" stroke="#c50f1f" stroke-width="3"/>
+<text x="707" y="390" font-size="12" font-weight="700" fill="#c50f1f" text-anchor="middle">ExpressRoute</text>
+<text x="707" y="418" font-size="10.5" fill="#605e5c" text-anchor="middle">(private peering)</text>
+
+<path d="M560 270 L700 270 L740 292 L792 292" fill="none" stroke="#107c10" stroke-width="1.6" marker-end="url(#g)"/>
+<path d="M560 280 L1050 232 L1150 242" fill="none" stroke="#107c10" stroke-width="0"/>
+<path d="M560 260 L720 220 L1050 220 L1150 242" fill="none" stroke="#107c10" stroke-width="1.6" marker-end="url(#g)"/>
+<path d="M560 300 L740 360 L940 430 L932 430" fill="none" stroke="#107c10" stroke-width="0"/>
+<path d="M560 300 L760 470 L932 440" fill="none" stroke="#107c10" stroke-width="1.6" marker-end="url(#g)"/>
+<text x="640" y="205" font-size="11.5" font-weight="600" fill="#107c10">3. SSH over ExpressRoute — read-only collection</text>
+<text x="640" y="221" font-size="11.5" font-weight="600" fill="#107c10">(no agent installed on the SAP servers)</text>
+
+<rect x="350" y="650" width="240" height="66" rx="6" fill="#f7f3fa" stroke="#7719aa"/>
+<text x="370" y="676" font-size="13" font-weight="600" fill="#7719aa">Assessment report</text>
+<text x="370" y="694" font-size="11" fill="#605e5c">CONFIG_&lt;SID&gt;_*.html</text>
+
+<path d="M455 336 L455 642" fill="none" stroke="#7719aa" stroke-width="1.5" marker-end="url(#p)"/>
+<text x="465" y="620" font-size="11.5" font-weight="600" fill="#7719aa">4. generates</text>
+
+<rect x="60" y="650" width="220" height="66" rx="6" fill="#faf9f8" stroke="#c8c6c4"/>
+<rect x="72" y="665" width="40" height="36" rx="4" fill="#0078d4"/><text x="92" y="688" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">MSFT</text>
+<text x="124" y="678" font-size="13" font-weight="600" fill="#252423">Microsoft</text>
+<text x="124" y="695" font-size="11" fill="#605e5c">report review</text>
+
+<path d="M350 683 L288 683" fill="none" stroke="#7719aa" stroke-width="1.5" marker-end="url(#p)"/>
+<text x="319" y="672" font-size="11" font-weight="600" fill="#7719aa" text-anchor="middle">5. scp to</text>
+<text x="319" y="700" font-size="10.5" fill="#605e5c" text-anchor="middle">laptop &amp; share</text>
+</svg>

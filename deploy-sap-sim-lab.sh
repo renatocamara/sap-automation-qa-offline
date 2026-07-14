@@ -2,24 +2,24 @@
 # =============================================================================
 # deploy-sap-sim-lab.sh
 #
-# Builds a LAB environment to validate the offline SAP configuration checks
-# process end to end, using an existing hub/spoke topology:
+# Builds a LAB that replicates the customer environment:
 #
-#   HUB   vnet  -> new subnet + jump server VM (management)
-#   SPOKE vnet  -> new subnet + 2 simulated "SAP" VMs (SLES):
-#                    vm-sapdb01   (plays the HANA DB node)
-#                    vm-sapascs01 (plays the ASCS node)
+#   HUB   vnet  -> "jump server" VM: RHEL 9, NO INTERNET (simulates on-prem),
+#                  reachable via private connectivity (VPN/peering)
+#   SPOKE vnet  -> 2 simulated "SAP" VMs: RHEL 8.10 + Python 3.6 (customer
+#                  versions), NO INTERNET
 #
-# The SAP VMs run no real SAP software. Purpose: give the framework real hosts
-# to SSH into and real Azure resources to validate, so the full pipeline
-# (inventory -> SSH -> ARM -> HTML report) can be proven. Expect many SAP-level
-# checks to report "fail/not found" — that is the expected lab outcome.
+# Matches the customer scenario: offline jump server runs the framework; SAP
+# servers are only touched via read-only SSH. Purpose: validate the offline
+# procedure end to end, including the offline-auth fix (LAB-FINDINGS issue 5)
+# and the "zero changes on SAP servers" option (ansible-core 2.16 with
+# Python 3.6 targets).
 #
-# Also generates the framework workspace files (hosts.yaml, sap-parameters.yaml)
-# and prints the commands to copy everything to the jump server.
+# Order of operations matters: the jump server is prepared (python3.11 etc.)
+# WHILE it still has outbound access; only then are the deny-internet NSG
+# rules applied to freeze the offline state.
 #
-# Non-interactive mode: AUTO=1 ./deploy-sap-sim-lab.sh  (accepts all defaults)
-#
+# Non-interactive mode: AUTO=1 ./deploy-sap-sim-lab.sh
 # Requirements: az (logged in), python3, ssh-keygen.
 # =============================================================================
 set -euo pipefail
@@ -63,8 +63,7 @@ az account set --subscription "$SUBSCRIPTION_ID"
 log "Using subscription: $(az account show --query name -o tsv)"
 
 # find_vnet <name> -> sets FOUND_SUB / FOUND_RG. Searches the selected
-# subscription first, then every other subscription you can access (in an
-# Azure Landing Zone the hub VNet usually lives in a Connectivity subscription).
+# subscription first, then every other subscription you can access.
 # Uses 'az resource list' because newer Azure CLI requires -g on 'az network vnet list'.
 find_vnet() {
     local vnet="$1" rg sub
@@ -79,19 +78,18 @@ find_vnet() {
     return 1
 }
 
-ask HUB_VNET   "Hub VNet name"   "vnet-alz-hub-eastus2"
+ask HUB_VNET   "Hub VNet name (hosts the simulated on-prem jump server)" "vnet-alz-hub-eastus2"
 find_vnet "$HUB_VNET" || die "Hub VNet '$HUB_VNET' not found in any accessible subscription."
 HUB_SUB="$FOUND_SUB"; HUB_RG="$FOUND_RG"
 log "Hub VNet found: RG=$HUB_RG, subscription=$(az account show --subscription "$HUB_SUB" --query name -o tsv)"
 
-ask SPOKE_VNET "Spoke VNet name" "vnet-migrate-spoke-eastus2"
+ask SPOKE_VNET "Spoke VNet name (hosts the simulated SAP servers)" "vnet-migrate-spoke-eastus2"
 find_vnet "$SPOKE_VNET" || die "Spoke VNet '$SPOKE_VNET' not found in any accessible subscription."
 SPOKE_SUB="$FOUND_SUB"; SPOKE_RG="$FOUND_RG"
 log "Spoke VNet found: RG=$SPOKE_RG, subscription=$(az account show --subscription "$SPOKE_SUB" --query name -o tsv)"
 
 LOCATION=$(az network vnet show -g "$HUB_RG" -n "$HUB_VNET" --subscription "$HUB_SUB" --query location -o tsv)
-# Azure requires VM/NIC to live in the SAME subscription as their VNet, so the
-# lab uses one RG per side: <base>-mgmt next to the hub, <base>-sap next to the spoke.
+# Azure requires VM/NIC to live in the SAME subscription as their VNet.
 ask LAB_RG     "Base name for the lab resource groups" "rg-sapqa-lab"
 MGMT_RG="${LAB_RG}-mgmt"   # created in the hub's subscription
 SAP_RG="${LAB_RG}-sap"     # created in the spoke's subscription
@@ -106,9 +104,7 @@ else
 fi
 
 # ----------------------------- subnets ---------------------------------------
-# Creates an NSG and a subnet with the NSG attached (many landing zone policies
-# require "Subnets must have a Network Security Group"). If the subnet already
-# exists without an NSG, one is attached retroactively.
+# Creates an NSG and a subnet with the NSG attached (landing zone policy).
 create_subnet() { # rg vnet subnet_name subscription
     local rg="$1" vnet="$2" sn="$3" sub="$4" space used suggested prefix vloc nsg nsgid
     nsg="nsg-$sn"
@@ -152,9 +148,6 @@ if [[ ! -f "$KEY" ]]; then
 fi
 
 # ----------------------------- VM size auto-detection ------------------------
-# Capacity restrictions vary per subscription/region. Test candidates in order
-# (newest generations first) and use the first SKU deployable in BOTH the hub
-# and spoke subscriptions.
 log "Detecting a VM size available in $LOCATION for BOTH the hub and spoke subscriptions..."
 VM_SIZE=""
 for cand in Standard_D2als_v7 Standard_D2ls_v7 Standard_D2as_v7 Standard_D2s_v7 \
@@ -172,8 +165,16 @@ done
 ask VM_SIZE "VM size for all lab VMs" "$VM_SIZE"
 log "Using VM size: $VM_SIZE"
 
+# ----------------------------- images (match the customer) -------------------
+JUMP_IMAGE="RedHat:RHEL:9-lvm-gen2:latest"          # customer jump server: RHEL 9
+SAP_IMAGE="RedHat:RHEL:810-gen2:latest"             # customer SAP servers: RHEL 8.10 (Python 3.6)
+if ! az vm image show --urn "$SAP_IMAGE" -l "$LOCATION" >/dev/null 2>&1; then
+    warn "Image $SAP_IMAGE not found — falling back to RedHat:RHEL:8-lvm-gen2:latest"
+    SAP_IMAGE="RedHat:RHEL:8-lvm-gen2:latest"
+fi
+log "Jump image: $JUMP_IMAGE | SAP image: $SAP_IMAGE"
+
 # ----------------------------- resource groups + VMs -------------------------
-# Each RG is created in the SAME subscription as the VNet its VMs join.
 az group show -n "$MGMT_RG" --subscription "$HUB_SUB" >/dev/null 2>&1 || \
     az group create -n "$MGMT_RG" -l "$LOCATION" --subscription "$HUB_SUB" >/dev/null
 az group show -n "$SAP_RG" --subscription "$SPOKE_SUB" >/dev/null 2>&1 || \
@@ -182,33 +183,44 @@ az group show -n "$SAP_RG" --subscription "$SPOKE_SUB" >/dev/null 2>&1 || \
 HUB_SUBNET_ID=$(az network vnet subnet show -g "$HUB_RG" --vnet-name "$HUB_VNET" -n snet-sapqa-mgmt --subscription "$HUB_SUB" --query id -o tsv)
 SIM_SUBNET_ID=$(az network vnet subnet show -g "$SPOKE_RG" --vnet-name "$SPOKE_VNET" -n snet-sap-sim --subscription "$SPOKE_SUB" --query id -o tsv)
 
-# --nsg "" prevents az from auto-creating a NIC-level NSG with an SSH-from-
-# Internet rule, which ALZ policy "Deny-MgmtPorts-From-Internet" blocks.
-# The subnet NSGs created above govern traffic instead.
-log "Creating jump server vm-sapqa-jump01 (Ubuntu 22.04, $VM_SIZE, no public IP) in $MGMT_RG..."
+# --nsg "" prevents az from auto-creating a NIC-level NSG (blocked by ALZ policy).
+log "Creating jump server vm-sapqa-jump01 (RHEL 9, $VM_SIZE, no public IP) in $MGMT_RG..."
 az vm create -g "$MGMT_RG" -n vm-sapqa-jump01 -l "$LOCATION" --subscription "$HUB_SUB" \
-    --image Canonical:0001-com-ubuntu-server-jammy:22_04-lts-gen2:latest \
+    --image "$JUMP_IMAGE" \
     --size "$VM_SIZE" --subnet "$HUB_SUBNET_ID" --public-ip-address "" \
     --nsg "" --admin-username "$ADMIN_USER" --ssh-key-values "$KEY.pub" \
-    --assign-identity --output none
+    --output none
 
 for VM in vm-sapdb01 vm-sapascs01; do
-    log "Creating simulated SAP VM $VM (SLES 15 SP5, $VM_SIZE, no public IP) in $SAP_RG..."
+    log "Creating simulated SAP VM $VM (RHEL 8.10 / Python 3.6, $VM_SIZE, no public IP) in $SAP_RG..."
     az vm create -g "$SAP_RG" -n "$VM" -l "$LOCATION" --subscription "$SPOKE_SUB" \
-        --image SUSE:sles-15-sp5:gen2:latest \
+        --image "$SAP_IMAGE" \
         --size "$VM_SIZE" --subnet "$SIM_SUBNET_ID" --public-ip-address "" \
         --nsg "" --admin-username "$ADMIN_USER" --ssh-key-values "$KEY.pub" --output none
 done
 
-# ----------------------------- RBAC ------------------------------------------
-IDENTITY=$(az vm show -g "$MGMT_RG" -n vm-sapqa-jump01 --subscription "$HUB_SUB" --query identity.principalId -o tsv)
-log "Granting Reader to jump server identity ($IDENTITY)..."
-az role assignment create --assignee "$IDENTITY" --role Reader \
-    --scope "/subscriptions/$SPOKE_SUB/resourceGroups/$SAP_RG" >/dev/null || warn "Reader on $SAP_RG failed (may already exist)."
-az role assignment create --assignee "$IDENTITY" --role Reader \
-    --scope "/subscriptions/$SPOKE_SUB/resourceGroups/$SPOKE_RG" >/dev/null || warn "Reader on $SPOKE_RG failed (optional)."
-az role assignment create --assignee "$IDENTITY" --role Reader \
-    --scope "/subscriptions/$HUB_SUB/resourceGroups/$MGMT_RG" >/dev/null || warn "Reader on $MGMT_RG failed (optional)."
+# ----------------------------- jump server prep (while it still has outbound) -
+# The customer's jump server already has python3.11/sshpass via their Red Hat
+# channel. Our lab jump server gets them now, BEFORE outbound is blocked.
+log "Preparing the jump server (python3.11, sshpass) while outbound is still available..."
+az vm run-command invoke -g "$MGMT_RG" -n vm-sapqa-jump01 --subscription "$HUB_SUB" \
+    --command-id RunShellScript \
+    --scripts "dnf install -y python3.11 python3.11-pip sshpass && python3.11 --version" \
+    --query "value[0].message" -o tsv | tail -3 || warn "run-command failed — install python3.11 manually before blocking outbound."
+
+# ----------------------------- freeze the offline state ----------------------
+# Deny all outbound internet from both lab subnets — simulating the customer's
+# no-internet jump server and SAP servers. Private traffic (VPN, peering,
+# ExpressRoute simulation) is unaffected (VirtualNetwork rules still allow it).
+log "Applying deny-internet-outbound rules (this makes the lab truly offline)..."
+az network nsg rule create -g "$HUB_RG" --nsg-name nsg-snet-sapqa-mgmt --subscription "$HUB_SUB" \
+    -n Deny-Internet-Outbound --priority 4000 --direction Outbound --access Deny \
+    --protocol '*' --destination-address-prefixes Internet --destination-port-ranges '*' \
+    --output none 2>/dev/null || warn "Deny rule on mgmt NSG may already exist."
+az network nsg rule create -g "$SPOKE_RG" --nsg-name nsg-snet-sap-sim --subscription "$SPOKE_SUB" \
+    -n Deny-Internet-Outbound --priority 4000 --direction Outbound --access Deny \
+    --protocol '*' --destination-address-prefixes Internet --destination-port-ranges '*' \
+    --output none 2>/dev/null || warn "Deny rule on sim NSG may already exist."
 
 # ----------------------------- workspace files -------------------------------
 JUMP_IP=$(az vm show -g "$MGMT_RG" -n vm-sapqa-jump01 -d --subscription "$HUB_SUB" --query privateIps -o tsv)
@@ -217,8 +229,10 @@ SCS_IP=$(az vm show -g "$SAP_RG" -n vm-sapascs01 -d --subscription "$SPOKE_SUB" 
 
 WS="lab-workspace/LAB-EUS2-SAP01-X00"
 mkdir -p "$WS"
-# ansible_python_interpreter: SLES 15 default python3 is 3.6, too old for the
-# framework's ansible-core (needs >= 3.7). Install python311 on the SAP VMs.
+# NOTE: no ansible_python_interpreter here on purpose — the SAP sims keep the
+# customer's Python 3.6, to validate the "ansible-core 2.16, zero changes on
+# SAP servers" option. If that test fails, uncomment the interpreter lines and
+# install python3.11 on the SAP sims (LAB-FINDINGS issue 1 / option A).
 cat > "$WS/hosts.yaml" <<EOF
 X00_DB:
   hosts:
@@ -230,7 +244,7 @@ X00_DB:
       virtual_host: "vm-sapdb01"
       become_user: "root"
       os_type: "linux"
-      ansible_python_interpreter: "/usr/bin/python3.11"
+      # ansible_python_interpreter: "/usr/bin/python3.11"   # option A only
       vm_name: "vm-sapdb01"
   vars:
     node_tier: "hana"
@@ -244,7 +258,7 @@ X00_SCS:
       virtual_host: "vm-sapascs01"
       become_user: "root"
       os_type: "linux"
-      ansible_python_interpreter: "/usr/bin/python3.11"
+      # ansible_python_interpreter: "/usr/bin/python3.11"   # option A only
       vm_name: "vm-sapascs01"
   vars:
     node_tier: "scs"
@@ -268,27 +282,26 @@ log "Workspace generated at: $WS"
 
 # ----------------------------- summary ---------------------------------------
 echo
-echo "==================== LAB READY ===================="
-echo "  Jump server : vm-sapqa-jump01  $JUMP_IP  (hub/snet-sapqa-mgmt, RG $MGMT_RG)"
-echo "  SAP DB sim  : vm-sapdb01       $DB_IP   (spoke/snet-sap-sim, RG $SAP_RG)"
-echo "  SAP SCS sim : vm-sapascs01     $SCS_IP  (spoke/snet-sap-sim, RG $SAP_RG)"
+echo "==================== OFFLINE LAB READY ===================="
+echo "  Jump server : vm-sapqa-jump01  $JUMP_IP  RHEL 9, NO internet (simulated on-prem)"
+echo "  SAP DB sim  : vm-sapdb01       $DB_IP   RHEL 8.10 / Python 3.6, NO internet"
+echo "  SAP SCS sim : vm-sapascs01     $SCS_IP  RHEL 8.10 / Python 3.6, NO internet"
 echo "  SSH key     : $KEY"
-echo "==================================================="
+echo "==========================================================="
 echo
-echo "Next steps:"
-echo "  1. Connect to the jump server:"
-echo "       ssh -i $KEY $ADMIN_USER@$JUMP_IP"
-echo "  2. Install python311 on the SAP VMs (SLES default python3 is too old):"
-echo "       ssh -i $KEY $ADMIN_USER@$DB_IP 'sudo zypper install -y python311'"
-echo "       ssh -i $KEY $ADMIN_USER@$SCS_IP 'sudo zypper install -y python311'"
-echo "  3. On the jump server: install the framework (online: scripts/setup.sh —"
-echo "     offline: see the offline installation guide), then apply the framework"
-echo "     fixes: ./apply-framework-fixes.sh ~/sap-automation-qa  (see LAB-FINDINGS.md)"
-echo "  4. Copy the workspace:"
+echo "Next steps (mirrors the customer QUICKSTART):"
+echo "  1. From your laptop (via VPN): ssh -i $KEY $ADMIN_USER@$JUMP_IP"
+echo "  2. Build the bundle on your laptop/WSL (QUICKSTART Step 2 — remember"
+echo "     the ansible-core 2.16 constraint to test the zero-SAP-changes option:"
+echo "       echo 'ansible-core<2.17' > constraints.txt"
+echo "       python3 -m pip download -r sap-automation-qa/requirements.in -c constraints.txt \\"
+echo "         -d wheels/ --platform manylinux2014_x86_64 --python-version 3.11 --only-binary=:all:)"
+echo "  3. scp the bundle to the jump server, install offline (QUICKSTART Step 4),"
+echo "     apply fixes, copy this workspace:"
 echo "       scp -i $KEY -r $WS $ADMIN_USER@$JUMP_IP:~/sap-automation-qa/WORKSPACES/SYSTEM/"
-echo "  5. On the jump server: set TEST_TYPE=ConfigurationChecks and"
-echo "     SYSTEM_CONFIG_NAME=LAB-EUS2-SAP01-X00 in vars.yaml, then:"
-echo "       az login --identity && az account set --subscription <spoke-sub>"
-echo "       sudo az login --identity   # Azure-based checks run as root (become)"
-echo "       ./scripts/sap_automation_qa.sh"
-echo "  6. Report: WORKSPACES/SYSTEM/LAB-EUS2-SAP01-X00/quality_assurance/CONFIG_X00_HANA_*.html"
+echo "  4. Run WITHOUT any az login — this validates LAB-FINDINGS issue 5."
+echo "  5. Expect: OS/SAP checks run, Azure checks error, report generated."
+echo
+echo "Toggle internet on the jump server (for troubleshooting only):"
+echo "  ON : az network nsg rule delete -g $HUB_RG --nsg-name nsg-snet-sapqa-mgmt --subscription $HUB_SUB -n Deny-Internet-Outbound"
+echo "  OFF: re-run this script (idempotent) or recreate the rule."

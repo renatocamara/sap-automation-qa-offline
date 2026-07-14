@@ -1,5 +1,11 @@
 # SAP Testing Automation Framework — Offline Installation Guide
 
+> **Note:** the primary, environment-specific procedure is
+> **[QUICKSTART.md](./QUICKSTART.md)** — follow that one. This document is the
+> generic deep-dive reference (it explains the *why* behind each offline step) and
+> uses the generic term "staging machine" for the internet-connected download
+> machine; in the current environment that role is played by the **operator laptop**.
+
 **Purpose:** Install and run the [Azure/sap-automation-qa](https://github.com/Azure/sap-automation-qa)
 configuration checks on a management (jump) server **without internet access**.
 

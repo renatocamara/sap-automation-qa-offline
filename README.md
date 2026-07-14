@@ -4,41 +4,33 @@ Tooling to run the [SAP Testing Automation Framework (Azure/sap-automation-qa)](
 configuration checks in environments where the management (jump) server has **no
 internet access** — common in secure and regulated SAP landscapes.
 
-## Architecture
+## Architecture (current scenario: on-premises jump server, fully offline)
 
-![Offline execution architecture](./architecture.svg)
+![Customer scenario architecture](./architecture-onprem.svg)
 
-The numbered flow: (1) an internet-connected staging machine downloads the framework
-and dependencies and builds the offline bundle; (2) the bundle is transferred to the
-jump server over an approved channel; (3) the jump server inspects the SAP VMs via
-SSH — read-only, nothing is installed on them; (4) it validates Azure resource
-configuration through the ARM APIs using its managed identity (private access);
-(5) it generates the HTML assessment report; (6) the report is shared with Microsoft
-for review. See the [installation guide](./sap-automation-qa-offline-install.md) for
-the full step-by-step procedure.
+The environment: an **on-premises jump server (RHEL 9, no internet, no Azure
+portal)** connected to Azure via ExpressRoute; SAP servers on Azure (RHEL 8.10, no
+internet). The flow: (1) the operator laptop (internet) downloads the framework and
+all dependencies as one bundle; (2) the bundle is copied to the jump server via scp;
+(3) the jump server runs read-only SSH checks against the SAP servers over
+ExpressRoute; (4) the report is generated on the jump server; (5) copied back to
+the laptop and shared with Microsoft. Full procedure:
+[QUICKSTART.md](./QUICKSTART.md).
 
 ## Contents
 
 | File | Description |
 |---|---|
-| [QUICKSTART.md](./QUICKSTART.md) | **Start here.** Background on why this documentation exists, then the primary path — Scenario 2: existing jump server WITH internet (scenario explanation + [dedicated architecture diagram](./architecture-online.svg) + 8-step command sequence, including the validated fixes). Scenario 1 (air-gapped, staging machine + offline bundle) kept as fallback. |
-| [sap-automation-qa-offline-install.md](./sap-automation-qa-offline-install.md) | **Step-by-step offline installation guide** (deep reference for Scenario 1). Explains every step and why it's needed: preparing a staging machine (installing git/Python, cloning the repo), building the offline dependency bundle, transferring it, installing on the air-gapped server, and running the checks. |
+| [QUICKSTART.md](./QUICKSTART.md) | **Start here.** Background, the "does anything get installed on SAP?" answer, the environment ([diagram](./architecture-onprem.svg)), the Azure-endpoints decision test, and the 9-step offline procedure: laptop downloads bundle → scp to jump server → offline install + validated fixes → checks → report back to laptop. |
+| [sap-automation-qa-offline-install.md](./sap-automation-qa-offline-install.md) | **Deep-dive reference** for the offline installation. Explains the *why* behind each step: preparing the internet-connected download machine (the operator laptop, in this environment), building the offline dependency bundle, transferring it, installing on the air-gapped jump server, and running the checks. |
 | [provision-jumpserver.sh](./provision-jumpserver.sh) | **Interactive Azure CLI script** that provisions the management (jump) server. Prompts for subscription, deployment target (hub VNet / DMZ VNet / new VNet), suggests an unused CIDR block and validates it against existing VNets, lets you pick a VM SKU (validated for the region), and creates the VM with a system-assigned managed identity. |
 | [deploy-sap-sim-lab.sh](./deploy-sap-sim-lab.sh) | **Lab builder** for validating the whole process in a hub/spoke ALZ environment: creates subnets with NSGs (policy-compliant), a jump server, and two simulated SAP VMs; auto-detects an available VM SKU; generates the framework workspace files. |
 
 ## Quick start
 
-Already have a jump server? Go straight to **[QUICKSTART.md](./QUICKSTART.md)** —
-Scenario 2 (jump server with internet) is the primary 8-step path; Scenario 1
-(air-gapped) is the documented fallback.
-
-Need to create a jump server first?
-
-```bash
-# On any machine with Azure CLI + python3:
-chmod +x provision-jumpserver.sh
-./provision-jumpserver.sh
-```
+Go straight to **[QUICKSTART.md](./QUICKSTART.md)** — the 9-step offline procedure
+for the on-premises jump server: download on the laptop, transfer, install offline,
+run the checks, collect the report.
 
 ## Key facts
 

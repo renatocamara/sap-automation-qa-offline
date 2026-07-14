@@ -20,7 +20,7 @@ a `json` attribute; confusing downstream failures.
 **Root cause:** the framework installs latest `ansible-core` (≥2.17), which requires
 Python ≥3.7 **on target machines**. SLES 15 (and RHEL 8) default `python3` is 3.6.
 
-**Fix:** point Ansible at the newer Python that ships alongside — add to every host in
+**Fix (option A):** point Ansible at a newer Python — add to every host in
 `hosts.yaml`:
 
 ```yaml
@@ -28,6 +28,22 @@ ansible_python_interpreter: "/usr/bin/python3.11"
 ```
 
 (Install first if absent: `sudo zypper install -y python311` / `sudo dnf install -y python3.11`.)
+
+**Production-safety note:** the install is additive (parallel interpreter, no
+default change, no library replaced, no service restart, rollback =
+`dnf remove python3.11`). Still: change window + non-prod SAP system first.
+
+**Fix (option B — zero changes on SAP servers, under lab validation):** pin the
+bundle to `ansible-core<2.17` — version 2.16 still supports Python 3.6 targets, so
+nothing needs to be installed on the SAP servers. Constraint at bundle build time:
+
+```bash
+echo 'ansible-core<2.17' > constraints.txt
+python3 -m pip download -r sap-automation-qa/requirements.in -c constraints.txt -d wheels/ ...
+```
+
+Status: to be validated in the lab (RHEL 8.10 / Python 3.6 SAP sims) before
+recommending to the customer.
 
 ## Issue 2 — Skipped Windows IMDS task clobbers the Linux result (upstream bug)
 
@@ -68,6 +84,27 @@ not authenticate root.
 ```bash
 sudo az login --identity && sudo az account set --subscription <sub>
 ```
+
+## Issue 5 — On-premises jump server: run aborts at Azure login (scenario adaptation)
+
+**Context:** the customer's jump server is **on-premises** (RHEL 9, no internet, no
+Azure endpoints), connected to the SAP VNet via ExpressRoute private peering.
+
+**Symptom (anticipated):** the playbook's first localhost tasks run
+`az login --identity` — which requires an Azure VM with a managed identity — and a
+pip bootstrap that contacts PyPI. Offline/on-prem, both fail and abort the run
+before any SAP check executes.
+
+**Fix:** `apply-framework-fixes.sh` now makes both tasks non-fatal
+(`ignore_errors`). Result: all OS/SAP-level checks run and the report is generated;
+Azure infrastructure checks appear as errors (equivalent to what we observed in the
+lab report before the root `az login` — the pipeline is proven to complete in that
+state). If Azure coverage is required, the network team must allow
+`login.microsoftonline.com` + `management.azure.com` and a **service principal**
+(not managed identity) is used — see QUICKSTART Step 6b.
+
+**Status:** unlike issues 1–4, this one was NOT yet validated in the lab (our lab
+jump server is an Azure VM). Validate on first customer run.
 
 ---
 
