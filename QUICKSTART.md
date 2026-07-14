@@ -121,6 +121,15 @@ environment description).
 ```bash
 mkdir -p ~/sapqa-offline && cd ~/sapqa-offline
 
+# 0. A local virtual environment for the download tooling. REQUIRED on modern
+#    Ubuntu/Debian (Python 3.11+), where `pip install` into the system Python is
+#    blocked with "externally-managed-environment" (PEP 668). The venv sidesteps
+#    that cleanly (✅ found during a laptop dry-run). Needs python3-venv:
+#      sudo apt-get install -y python3-venv     # Debian/Ubuntu, one time
+python3 -m venv .buildenv
+source .buildenv/bin/activate
+pip install --upgrade pip
+
 # 1. The framework + this documentation/fixes repo
 git clone https://github.com/Azure/sap-automation-qa.git
 git clone https://github.com/renatocamara/sap-automation-qa-offline.git tools
@@ -132,11 +141,11 @@ tar czf tools.tar.gz tools
 #    The ansible-core<2.17 constraint is what lets the checks run against the SAP
 #    servers' Python 3.6 WITHOUT installing anything on them (✅ lab-validated).
 echo 'ansible-core<2.17' > constraints.txt
-python3 -m pip download -r sap-automation-qa/requirements.in -c constraints.txt -d wheels/ \
+pip download -r sap-automation-qa/requirements.in -c constraints.txt -d wheels/ \
   --platform manylinux2014_x86_64 --python-version 3.11 --only-binary=:all:
 
-# 3. Ansible collections
-python3 -m pip install --user ansible-core
+# 3. Ansible collections (ansible-core goes into the .buildenv, not the system)
+pip install ansible-core
 ansible-galaxy collection download -r sap-automation-qa/collections/requirements.yml -p collections_offline/
 
 # 4. python3.11 + git RPMs for the JUMP SERVER (only needed if Step 1's dnf failed —

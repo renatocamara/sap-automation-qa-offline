@@ -112,6 +112,20 @@ ran the full playbook: the `az login` task failed and was made non-fatal by the 
 (`localhost: rescued=1 ignored=1`), all OS/SAP checks ran (`failed=0`), and the HTML
 report was generated — with no Azure authentication at all.
 
+## Issue 7 — `pip install` blocked on the download laptop (PEP 668)
+
+**Symptom (laptop dry-run):** on a modern Ubuntu/Debian laptop (Python 3.11+),
+`pip install --user ansible-core` fails with `externally-managed-environment`, and
+`ansible-galaxy` is then "command not found".
+
+**Root cause:** PEP 668 — recent Debian/Ubuntu mark the system Python as externally
+managed and block `pip install` into it.
+
+**Fix:** build the bundle inside a local virtual environment on the laptop
+(`python3 -m venv .buildenv && source .buildenv/bin/activate`), then `pip install
+ansible-core` there. QUICKSTART Step 2 now starts with this venv. (`pip download` for
+the wheels is unaffected — it only downloads, doesn't install.)
+
 ## Issue 6 — `git` missing on the jump server (RHEL 9)
 
 **Symptom:** the offline install / framework clone fails with `git: command not
