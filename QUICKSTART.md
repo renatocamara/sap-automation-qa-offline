@@ -217,32 +217,38 @@ fails, and offline runs abort at the Azure login; details in
 [LAB-FINDINGS.md](./LAB-FINDINGS.md)):
 
 ```bash
-../tools/apply-framework-fixes.sh .
+# `bash` prefix avoids a "Permission denied" if the exec bit wasn't preserved
+# through the download/transfer (✅ offline dry-run finding):
+bash ../tools/apply-framework-fixes.sh .
 ```
 
-## Step 5 — Python on the SAP servers (the one prerequisite installed there)
+## Step 5 — Python on the SAP servers — ⏭️ NORMALLY SKIP THIS
+
+> ✅ **If you built the bundle with the `ansible-core<2.17` constraint (Step 2, the
+> default), SKIP this step entirely and go to Step 6.** Lab-validated: with
+> ansible-core 2.16 the checks run against the SAP servers' Python 3.6 as-is —
+> **nothing is installed on the SAP servers.** This is the recommended path.
+
+This step is the **fallback only**, needed if a future framework version drops
+ansible-core 2.16 support (then Python ≥ 3.7 is required on the SAP servers).
+
+<details><summary>Fallback: install python3.11 on each SAP server</summary>
 
 > ☁️ **Run on: JUMP SERVER** — the `ssh` commands reach *into* each SAP server.
 
-As explained at the top: the SAP servers' Python 3.6 is too old for the framework's
-engine; `python3.11` must be installed side by side, once per server. First check —
-a newer interpreter may already be present:
-
 ```bash
-ssh <user>@<sap-server> 'ls /usr/bin/python3*'
+ssh <user>@<sap-server> 'ls /usr/bin/python3*'          # check what's there first
+ssh <user>@<sap-server> 'sudo dnf install -y python3.11' # install if absent
 ```
 
-If `python3.11` (or 3.9/3.12) is listed — nothing to install. Otherwise:
+Then add `ansible_python_interpreter: "/usr/bin/python3.11"` to each host in
+`hosts.yaml` (Step 6). "No internet" does not block the install: the SAP servers
+get packages from Red Hat's private channel (RHUI on Azure, or Satellite). If even
+that is blocked, carry the RHEL 8 `python3.11` RPMs in the bundle and `sudo rpm
+-ivh` them via the jump server. The install is additive — no default Python change,
+no service restart, no SAP impact; DEV/QAS first.
 
-```bash
-ssh <user>@<sap-server> 'sudo dnf install -y python3.11'
-```
-
-"No internet" does not block this: the SAP servers receive packages from Red Hat's
-private channel (RHUI on Azure, or the customer's Satellite) — the same channel
-that delivers their security patches. If even that is blocked, download the RHEL
-**8** `python3.11` RPMs on the laptop (Red Hat customer portal) and push them
-through the jump server, then `sudo rpm -ivh`.
+</details>
 
 ## Step 6 — Describe the SAP system (workspace)
 
@@ -251,6 +257,12 @@ through the jump server, then `sudo rpm -ivh`.
 The framework doesn't discover anything by itself — you describe the SAP system in
 a "workspace" folder: two files plus credentials. Everything below is copy-paste
 ready; replace only the UPPERCASE placeholders.
+
+> **Lab note:** if you're using the `deploy-sap-sim-lab.sh` lab, this workspace was
+> already generated for you (with the sim IPs and key) under `lab-workspace/` on the
+> machine that ran the script — just `scp` that folder into
+> `WORKSPACES/SYSTEM/` on the jump instead of recreating it. The steps below are how
+> a real customer builds it by hand.
 
 > **What is a SID?** Every SAP system has a **System ID (SID)** — a unique
 > 3-character uppercase code chosen when the system was installed (e.g. `PRD`,
