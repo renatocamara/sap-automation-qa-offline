@@ -99,18 +99,21 @@ servers. Every step is tagged.
 
 > ☁️ **Run on: JUMP SERVER.**
 
-The framework needs Python 3.11, pip and sshpass on the jump server. RHEL 9 provides
-all of them through the customer's standard Red Hat channel (Satellite/RHSM —
-no internet required):
+The framework needs **Python 3.11**, pip and sshpass on the jump server (RHEL 9's
+default is Python 3.9, too old to run the framework's engine). First check whether
+the jump server can reach the Red Hat channel:
 
 ```bash
-sudo dnf install -y python3.11 python3.11-pip sshpass
-python3.11 --version    # expect 3.11.x
+sudo dnf install -y python3.11 python3.11-pip sshpass && python3.11 --version
 ```
 
-> If the jump server has no Red Hat channel at all, download the same RPMs from the
-> Red Hat customer portal on the laptop and transfer them with the bundle
-> (Step 3), then `sudo rpm -ivh *.rpm`.
+- **If it succeeds** (3.11.x prints): done, go to Step 2.
+- **If it times out / fails:** expected and common. ⚠️ **Lab-validated finding** — an
+  on-premises jump server (and an Azure Landing Zone hub subnet) frequently has **no
+  route to Red Hat's update servers (RHUI)**, so `dnf` cannot fetch anything. In that
+  case the `python3.11` RPMs are **downloaded on the laptop and carried in the
+  bundle** (Step 2 includes them) and installed offline in Step 4. Nothing more to do
+  here — continue to Step 2.
 
 Also confirm the jump server can SSH into every SAP server (it already can, per the
 environment description).
@@ -138,7 +141,16 @@ python3 -m pip download -r sap-automation-qa/requirements.in -d wheels/ \
 python3 -m pip install --user ansible-core
 ansible-galaxy collection download -r sap-automation-qa/collections/requirements.yml -p collections_offline/
 
-# 4. Pack everything into ONE file and fingerprint it
+# 4. python3.11 RPMs for the JUMP SERVER (only needed if Step 1's dnf failed —
+#    i.e. the jump server can't reach Red Hat's RHUI). Skip if Step 1 succeeded.
+#    These must be RHEL/EL 9 RPMs (matching the jump server). Download them on a
+#    RHEL 9 machine with a Red Hat subscription:
+#      mkdir -p jump_rpms && dnf download --resolve --destdir=jump_rpms/ python3.11 python3.11-pip sshpass
+#    (If the laptop isn't RHEL 9, get them from the Red Hat customer portal or a
+#    RHEL 9 VM; keep them in ./jump_rpms/ so they ride along in the bundle.)
+
+# 5. Pack everything into ONE file and fingerprint it
+tar czf sapqa-offline-bundle.tar.gz sap-automation-qa.tar.gz tools.tar.gz wheels/ collections_offline/ jump_rpms/ 2>/dev/null || \
 tar czf sapqa-offline-bundle.tar.gz sap-automation-qa.tar.gz tools.tar.gz wheels/ collections_offline/
 sha256sum sapqa-offline-bundle.tar.gz
 ```
@@ -167,6 +179,11 @@ Verify the transfer, unpack, and install — **do NOT run the framework's `setup
 ```bash
 sha256sum ~/sapqa-offline-bundle.tar.gz     # must match Step 2's value
 cd ~ && tar xzf sapqa-offline-bundle.tar.gz
+
+# If Step 1's dnf failed (jump can't reach RHUI), install python3.11 from the
+# RPMs carried in the bundle — otherwise the next line (python3.11 -m venv) fails:
+sudo rpm -Uvh jump_rpms/*.rpm 2>/dev/null || echo "no jump_rpms (python3.11 already present from Step 1)"
+
 tar xzf sap-automation-qa.tar.gz && tar xzf tools.tar.gz
 cd sap-automation-qa
 
