@@ -259,54 +259,58 @@ no service restart, no SAP impact; DEV/QAS first.
 
 > ☁️ **Run on: JUMP SERVER**, inside the `sap-automation-qa` folder.
 
-The framework doesn't discover anything by itself — you describe the SAP system in
-a "workspace" folder: two files plus credentials. Everything below is copy-paste
-ready; replace only the UPPERCASE placeholders.
+The framework does not discover anything by itself. You describe your SAP system in a
+small "workspace" folder that holds two YAML files plus the SSH credential.
 
+### 6.1 Create the workspace folder
 
-> **What is a SID?** Every SAP system has a **System ID (SID)** — a unique
-> 3-character uppercase code chosen when the system was installed (e.g. `PRD`,
-> `QAS`). The database has its own **DB SID** (for HANA often `HDB`). Don't invent
-> them — find the real value: the SAP Basis team knows it, or read it off a SAP
-> server directly:
->
-> ```bash
-> ssh <user>@<sap-server> 'ls /usr/sap/ | grep -vE "SYS|tmp|hostctrl|hostexec"'
-> # each 3-letter entry is a SID; or list the sidadm OS users:
-> ssh <user>@<sap-server> 'getent passwd | grep -oE "^[a-z0-9]{3}adm" | sort -u'
-> ```
->
-> Examples below use `AMS`/`HDB` — replace with yours. (In this lab there is no real
-> SAP installed, so the deploy script uses the placeholder SID `X00`.)
+The folder name is just a label you choose — the framework uses it to locate these
+files (you point `vars.yaml` at it in Step 7). A common convention is
+`ENV-REGION-VNET-SID` (environment, Azure region, VNet, SAP SID), for example
+`PRD-EUS2-SAP01-AMS`. Any name works; pick one and create it:
 
 ```bash
 mkdir -p WORKSPACES/SYSTEM/PRD-EUS2-SAP01-AMS
 cd WORKSPACES/SYSTEM/PRD-EUS2-SAP01-AMS
 ```
 
-### 6a. `hosts.yaml` — which servers to check and how to reach them
+Whatever name you choose here, use the same one for `SYSTEM_CONFIG_NAME` in Step 7.
 
-One entry per SAP server, grouped by role: `<SID>_DB` (database), `<SID>_SCS`
-(central services), `<SID>_APP` (application servers). Adjust IPs/names; add or
-remove hosts:
+> **What is a SID?** The SID (System ID) is the unique 3-letter uppercase code that
+> identifies an SAP system (e.g. `PRD`, `QAS`); the database has its own DB SID (for
+> HANA, often `HDB`). Find the real values from your SAP Basis team, or read them off
+> a SAP server:
+>
+> ```bash
+> ssh <user>@<sap-server> 'ls /usr/sap/ | grep -vE "SYS|tmp|hostctrl|hostexec"'
+> ```
+>
+> The examples below use `AMS`/`HDB` — replace with yours.
 
-# NOTE: the `ansible_python_interpreter` line is COMMENTED OUT on purpose — the
-# default path (option B, ansible-core 2.16) uses the SAP servers' own Python 3.6,
-# so no interpreter override is needed. Uncomment it ONLY if you did the Step 5
-# fallback and installed python3.11 on the SAP servers.
+### 6.2 Create `hosts.yaml` — the SAP servers to check
+
+This file tells the jump server which SAP servers to connect to and how. Servers are
+grouped by role: `<SID>_DB` (database), `<SID>_SCS` (central services), `<SID>_APP`
+(application servers). One block per server — add or remove blocks to match your
+landscape.
+
+Replace the placeholders with your values: the group prefixes (`AMS_` → your SID),
+the hostnames, the private IPs, the SSH user, and the Azure VM names. Then paste the
+whole block:
+
+```bash
 cat > hosts.yaml <<'EOF'
 AMS_DB:
   hosts:
-    SAPDBHOSTNAME:                 # the server's hostname
-      ansible_host: "10.0.0.10"    # its private IP
-      ansible_user: "azureadm"     # SSH user (must sudo without password)
+    SAPDBHOSTNAME:
+      ansible_host: "10.0.0.10"
+      ansible_user: "azureadm"
       ansible_connection: "ssh"
       connection_type: "key"
       virtual_host: "SAPDBHOSTNAME"
       become_user: "root"
       os_type: "linux"
-      # ansible_python_interpreter: "/usr/bin/python3.11"   # ONLY if you did Step 5 (fallback)
-      vm_name: "AZURE-VM-NAME"     # exactly as in the Azure portal
+      vm_name: "AZURE-VM-NAME"
   vars:
     node_tier: "hana"
 AMS_SCS:
@@ -319,7 +323,6 @@ AMS_SCS:
       virtual_host: "SAPSCSHOSTNAME"
       become_user: "root"
       os_type: "linux"
-      # ansible_python_interpreter: "/usr/bin/python3.11"   # ONLY if you did Step 5 (fallback)
       vm_name: "AZURE-VM-NAME"
   vars:
     node_tier: "scs"
@@ -333,15 +336,26 @@ AMS_APP:
       virtual_host: "SAPAPPHOSTNAME"
       become_user: "root"
       os_type: "linux"
-      # ansible_python_interpreter: "/usr/bin/python3.11"   # ONLY if you did Step 5 (fallback)
       vm_name: "AZURE-VM-NAME"
   vars:
     node_tier: "app"
 EOF
 ```
 
-(If your SID is not `AMS`, rename the three group headers — they must be `<SID>_DB`,
-`<SID>_SCS`, `<SID>_APP` in uppercase.)
+What each field means:
+
+- `ansible_host` — the server's private IP (reachable from the jump server).
+- `ansible_user` — the SSH user; it must be able to `sudo` to root without a password
+  (the checks only read configuration).
+- `vm_name` — the Azure VM name exactly as shown in the portal (used by the Azure
+  checks, when they run).
+- Group names must be `<SID>_DB` / `<SID>_SCS` / `<SID>_APP` in uppercase — rename the
+  `AMS_` prefixes if your SID differs.
+
+You do **not** need to set a Python interpreter here: by default the checks use each
+SAP server's own Python (option B). Only if you took the Step 5 fallback and installed
+`python3.11` on the SAP servers, add a line
+`ansible_python_interpreter: "/usr/bin/python3.11"` under each host.
 
 ### 6b. `sap-parameters.yaml` — what the SAP system looks like
 
