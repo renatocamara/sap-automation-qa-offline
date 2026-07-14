@@ -357,7 +357,7 @@ SAP server's own Python (option B). Only if you took the Step 5 fallback and ins
 `python3.11` on the SAP servers, add a line
 `ansible_python_interpreter: "/usr/bin/python3.11"` under each host.
 
-### 6b. `sap-parameters.yaml` — what the SAP system looks like
+### 6.3 Create `sap-parameters.yaml` — what the SAP system looks like
 
 ```bash
 cat > sap-parameters.yaml <<'EOF'
@@ -379,19 +379,48 @@ If HA is `true`, also add `scs_cluster_type`/`database_cluster_type` (`AFA`, `IS
 or `ASD`) — see the upstream
 [SETUP guide, section 2.2](https://github.com/Azure/sap-automation-qa/blob/main/docs/SETUP.MD#22-system-configuration-workspaces).
 
-### 6c. Credentials — how the jump server logs into the SAP servers
+### 6.4 Credentials — how the jump server authenticates to the SAP servers
 
-Place the SSH private key that the SAP servers accept in the workspace, named
-exactly `ssh_key.ppk`, readable only by you. This is the same key operators already
-use for jump-server → SAP access — it stays within that existing trust zone:
+The framework connects to each SAP server over SSH, so it needs a credential. **Where
+it goes:** into *this* workspace folder — the one you are in
+(`WORKSPACES/SYSTEM/<your-name>/`) — as a file named exactly `ssh_key.ppk` (SSH key)
+or `password` (password). The framework looks for it there, nowhere else.
 
 ```bash
-cp /path/to/your/private-key ssh_key.ppk
+# from inside the workspace folder:
+cp /path/to/the/private-key ssh_key.ppk
 chmod 600 ssh_key.ppk
 ```
 
-(Password authentication is also supported: create a file named `password`
-containing it instead, `chmod 600`.)
+> If you are using the lab workspace (`LAB-...`), the key is already inside it — you
+> have nothing to do in this step.
+
+#### Getting this approved by security
+
+A private key sitting in a folder is a fair thing to push back on. Here is how to make
+this acceptable — and what to tell your security team:
+
+- **The trust path already exists.** The jump server is, by definition, the host
+  operators already use to SSH into the SAP servers. Whatever key does that already
+  lives within the jump server's boundary. The framework reuses that existing path;
+  it opens no new network route and the key never leaves the jump.
+- **Use a dedicated, least-privilege account and key — not a personal or admin one.**
+  Create an SSH key pair used *only* for these checks, tied to a dedicated service
+  account on the SAP servers. It can be revoked or rotated on its own without touching
+  anyone's real credentials, and its blast radius is limited to read-only inspection.
+- **Prefer ssh-agent so no key file rests on disk.** If you load the key into
+  `ssh-agent` in the shell that runs the checks (`ssh-add <key>`) and do **not** place
+  an `ssh_key.ppk` in the workspace, Ansible uses the agent for the run — the private
+  key stays in memory only and is gone when the agent is cleared. This is usually the
+  easiest option to approve.
+- **If a key file is used, treat it as ephemeral:** `chmod 600`, keep the workspace on
+  a restricted/encrypted path, and delete the file after the run
+  (`shred -u ssh_key.ppk`).
+
+> **Note — Azure Key Vault is *not* an option here.** For an internet-connected jump
+> server the framework can pull the credential from Key Vault, but the offline
+> on-premises jump can reach neither `vault.azure.net` nor an Azure managed identity,
+> so that path does not apply to this scenario.
 
 Return to the framework root:
 
