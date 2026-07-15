@@ -153,6 +153,38 @@ found`. RHEL 9 does not ship git by default.
 jump can't reach the Red Hat channel, add the `git` RPMs to the bundle alongside
 `python3.11` (Step 2).
 
+## Issue 9 — Jump server venv Python leaks to the SAP targets
+
+**Symptom (offline dry-run):** every SAP host fails immediately at `Gathering Facts`
+with `/bin/sh: /home/<user>/sap-automation-qa/.venv/bin/python3: No such file or
+directory` (`rc=127`), even though SSH to the host succeeds
+(`Shared connection to <ip> closed`). `PLAY RECAP` shows `failed=1` on each SAP host
+and no checks run.
+
+**Root cause:** the framework runs from a virtual environment on the jump server, and
+`src/ansible.cfg` sets `interpreter_python = auto_silent`. When Ansible is invoked from
+inside an active venv and the host has no explicit `ansible_python_interpreter`, it
+tries to reuse the **controller's** venv interpreter path
+(`…/sap-automation-qa/.venv/bin/python3`) on the remote SAP servers — where that path
+does not exist.
+
+**Fix:** pin each SAP host to its own system Python in `hosts.yaml`:
+
+```yaml
+ansible_python_interpreter: "/usr/bin/python3"
+```
+
+On RHEL 8.10 `/usr/bin/python3` is Python 3.6 and already present, so **nothing is
+installed on the SAP servers** — this stays option B. (If you took the Step 5 fallback
+and installed `python3.11` on the SAP servers, point it at `/usr/bin/python3.11`
+instead.) QUICKSTART Step 6.2 now ships this line in the `hosts.yaml` template.
+
+**Status:** ✅ VALIDATED 2026-07-15. After pinning the interpreter, a fully offline run
+completed with `return code: 0`, both RHEL 8.10 / Python 3.6 SAP hosts at `failed=0`,
+all six check families executed, and the HTML report generated
+(`CONFIG_X00_HANA_*`). The `az login` tasks on localhost still failed and were ignored
+(`localhost: rescued=1 ignored=1`) — expected for an offline jump (Issue 5).
+
 ---
 
 ## Debugging technique worth remembering

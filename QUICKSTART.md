@@ -246,8 +246,9 @@ ssh <user>@<sap-server> 'ls /usr/bin/python3*'          # check what's there fir
 ssh <user>@<sap-server> 'sudo dnf install -y python3.11' # install if absent
 ```
 
-Then add `ansible_python_interpreter: "/usr/bin/python3.11"` to each host in
-`hosts.yaml` (Step 6). "No internet" does not block the install: the SAP servers
+Then change the `ansible_python_interpreter` value to `"/usr/bin/python3.11"` on each
+host in `hosts.yaml` (Step 6 — the template already carries the line, default
+`/usr/bin/python3`). "No internet" does not block the install: the SAP servers
 get packages from Red Hat's private channel (RHUI on Azure, or Satellite). If even
 that is blocked, carry the RHEL 8 `python3.11` RPMs in the bundle and `sudo rpm
 -ivh` them via the jump server. The install is additive — no default Python change,
@@ -310,6 +311,7 @@ AMS_DB:
       virtual_host: "SAPDBHOSTNAME"
       become_user: "root"
       os_type: "linux"
+      ansible_python_interpreter: "/usr/bin/python3"
       vm_name: "AZURE-VM-NAME"
   vars:
     node_tier: "hana"
@@ -323,6 +325,7 @@ AMS_SCS:
       virtual_host: "SAPSCSHOSTNAME"
       become_user: "root"
       os_type: "linux"
+      ansible_python_interpreter: "/usr/bin/python3"
       vm_name: "AZURE-VM-NAME"
   vars:
     node_tier: "scs"
@@ -336,6 +339,7 @@ AMS_APP:
       virtual_host: "SAPAPPHOSTNAME"
       become_user: "root"
       os_type: "linux"
+      ansible_python_interpreter: "/usr/bin/python3"
       vm_name: "AZURE-VM-NAME"
   vars:
     node_tier: "app"
@@ -352,10 +356,17 @@ What each field means:
 - Group names must be `<SID>_DB` / `<SID>_SCS` / `<SID>_APP` in uppercase — rename the
   `AMS_` prefixes if your SID differs.
 
-You do **not** need to set a Python interpreter here: by default the checks use each
-SAP server's own Python (option B). Only if you took the Step 5 fallback and installed
-`python3.11` on the SAP servers, add a line
-`ansible_python_interpreter: "/usr/bin/python3.11"` under each host.
+**About `ansible_python_interpreter: "/usr/bin/python3"` (already in the template):**
+keep this line. It tells Ansible to use each SAP server's **own** system Python
+(`/usr/bin/python3` — Python 3.6 on RHEL 8.10), which is already installed, so
+**nothing is installed on the SAP servers** (this is option B). It is also required:
+because the framework runs from a virtual environment on the jump server, without this
+line Ansible tries to reuse the jump server's venv Python path on the SAP servers —
+which does not exist there — and every host fails at "Gathering Facts" with
+`/…/.venv/bin/python3: No such file or directory` (see LAB-FINDINGS Issue 9).
+
+Only if you took the Step 5 fallback and installed `python3.11` on the SAP servers,
+change the value to `"/usr/bin/python3.11"` under each host.
 
 ### 6.3 Create `sap-parameters.yaml` — what the SAP system looks like
 
