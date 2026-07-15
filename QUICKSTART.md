@@ -158,6 +158,9 @@ get one is **WSL** (Windows Subsystem for Linux). You only do this once.
 > need WSL on the jump server — only on this internet-connected laptop, and only to build
 > the bundle.
 
+**Reference:** Microsoft's official WSL install guide —
+[How to install Linux on Windows with WSL](https://learn.microsoft.com/en-us/windows/wsl/install).
+
 Once you have a Linux shell (WSL/Ubuntu, macOS, or Linux), run:
 
 ```bash
