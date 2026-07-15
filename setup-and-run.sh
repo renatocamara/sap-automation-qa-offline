@@ -16,9 +16,18 @@
 set -euo pipefail
 
 # ---- defaults (env / answers-file overridable) ------------------------------
-HOME_DIR="${HOME}"
-BUNDLE="${BUNDLE:-$HOME_DIR/sapqa-offline-bundle.tar.gz}"
-FRAMEWORK_DIR="${FRAMEWORK_DIR:-$HOME_DIR/sap-automation-qa}"
+# Find the bundle wherever the operator put it: an explicit BUNDLE wins; otherwise look
+# in the current directory, then next to this script, then $HOME. Everything (extract +
+# install) then happens in that same directory — not a hardcoded $HOME.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${BUNDLE:-}" ]]; then
+  for _cand in "$PWD/sapqa-offline-bundle.tar.gz" "$SCRIPT_DIR/sapqa-offline-bundle.tar.gz" "$HOME/sapqa-offline-bundle.tar.gz"; do
+    [[ -f "$_cand" ]] && { BUNDLE="$_cand"; break; }
+  done
+  BUNDLE="${BUNDLE:-$PWD/sapqa-offline-bundle.tar.gz}"
+fi
+WORK_DIR="${WORK_DIR:-$(cd "$(dirname "$BUNDLE")" 2>/dev/null && pwd || echo "$PWD")}"
+FRAMEWORK_DIR="${FRAMEWORK_DIR:-$WORK_DIR/sap-automation-qa}"
 REINSTALL="${REINSTALL:-0}"          # 1 = force re-extract + re-install even if present
 ASSUME_YES="${ASSUME_YES:-0}"        # 1 = don't pause for confirmation
 ANSWERS="${ANSWERS:-}"
@@ -95,7 +104,7 @@ install_offline() {
     warn "no .sha256 next to the bundle — skipping integrity check."
   fi
 
-  cd "$HOME_DIR"
+  cd "$WORK_DIR"
   tar xzf "$BUNDLE"
   # python3.11 from carried RPMs, only if the jump lacks it (Step 1 dnf failed)
   if ! command -v python3.11 >/dev/null 2>&1; then
