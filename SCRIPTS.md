@@ -32,6 +32,15 @@ the runner without first extracting it from `tools.tar.gz` inside the bundle.
 Common overrides (environment variables): `WORKDIR`, `TARGET_PYVER`, `TARGET_PLATFORM`,
 `ANSIBLE_CORE_CONSTRAINT`.
 
+> **Needs podman or docker (for the jump's python3.11 RPMs).** A fresh RHEL 9 jump ships
+> only python3.9, but ansible-core 2.16 needs a ≥3.10 control interpreter, so the jump
+> needs python3.11 — which an offline jump can't install itself. `build-bundle.sh` fetches
+> the python3.11 RPMs into the bundle using a **UBI9 container** (Red Hat's free base image;
+> no subscription needed). So the build machine needs `podman` or `docker` (on a RHEL host
+> it falls back to host `dnf`). If neither is present, `jump_rpms/` comes out empty and
+> `setup-and-run.sh` will stop at "python3.11 not present" — install one (`sudo apt-get
+> install -y podman`) and re-build. On WSL/Ubuntu, podman works well.
+
 ## 2. `setup-and-run.sh` — on the jump server (offline)
 
 Asks for the customer-specific inputs up front, then does everything else automatically:

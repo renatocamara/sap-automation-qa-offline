@@ -67,20 +67,36 @@ rm -rf collections_offline && mkdir -p collections_offline
 ansible-galaxy collection download \
   -r sap-automation-qa/collections/requirements.yml -p collections_offline/
 
-# ---- 4. jump-server RPMs (only useful on a RHEL 9 host with a subscription) --
+# ---- 4. jump-server RPMs (python3.11 for the offline RHEL 9 jump) -----------
+# A fresh RHEL 9 jump ships only python3.9; ansible-core 2.16 needs a >=3.10 control
+# interpreter, so the jump needs python3.11. Offline it can't dnf-install it, so we
+# carry the RPMs in the bundle. We fetch them WITHOUT a Red Hat subscription using a
+# UBI9 container (python3.11 is in the free UBI repos) — works on any laptop OS that
+# has podman or docker. On a RHEL host we fall back to host dnf.
+RPMS="python3.11 python3.11-pip git"
 mkdir -p jump_rpms
-if command -v dnf >/dev/null 2>&1; then
-  log "RHEL host detected — attempting python3.11 + git RPM download for the jump server"
-  if dnf download --resolve --destdir=jump_rpms/ python3.11 python3.11-pip git sshpass 2>/dev/null; then
-    log "RPMs downloaded into jump_rpms/"
-  else
-    warn "RPM download skipped/failed — not fatal. Only needed if the jump server can't reach RHUI."
-    warn "If so, fetch these RPMs on a subscribed RHEL 9 box and drop them in $WORKDIR/jump_rpms/."
-  fi
+fetch_rpms_container() {   # $1 = podman|docker
+  "$1" run --rm -v "$PWD/jump_rpms:/rpms" registry.access.redhat.com/ubi9/ubi:latest \
+    bash -c "dnf install -y --downloadonly --downloaddir=/rpms $RPMS"
+}
+if command -v podman >/dev/null 2>&1; then
+  log "Fetching jump python3.11 RPMs via podman (UBI9, no subscription needed)"
+  fetch_rpms_container podman && log "RPMs in jump_rpms/" || warn "podman RPM fetch failed — see note below."
+elif command -v docker >/dev/null 2>&1; then
+  log "Fetching jump python3.11 RPMs via docker (UBI9, no subscription needed)"
+  fetch_rpms_container docker && log "RPMs in jump_rpms/" || warn "docker RPM fetch failed — see note below."
+elif command -v dnf >/dev/null 2>&1; then
+  log "RHEL host — downloading python3.11 RPMs via host dnf"
+  dnf install -y --downloadonly --downloaddir=jump_rpms/ $RPMS 2>/dev/null \
+    || dnf download --resolve --destdir=jump_rpms/ $RPMS 2>/dev/null \
+    || warn "host dnf RPM fetch failed — see note below."
 else
-  warn "Not a RHEL host — skipping jump_rpms."
-  warn "If the jump server can't reach Red Hat's RHUI, fetch python3.11/git RPMs on a RHEL 9"
-  warn "machine and place them in $WORKDIR/jump_rpms/ before packing (re-run with those present)."
+  warn "No podman/docker/dnf found — cannot fetch python3.11 RPMs."
+fi
+if ! compgen -G "jump_rpms/*.rpm" >/dev/null; then
+  warn "jump_rpms/ is EMPTY. A fresh RHEL 9 jump has no python3.11 and setup-and-run.sh"
+  warn "will stop there. Fix: install podman/docker on this machine (e.g. 'sudo apt-get"
+  warn "install -y podman') and re-run, OR drop RHEL 9 python3.11 RPMs into $WORKDIR/jump_rpms/."
 fi
 
 # ---- 5. pack + fingerprint --------------------------------------------------
