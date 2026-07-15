@@ -629,3 +629,38 @@ the report is split in two, and **this is normal**:
 report. If Azure-infrastructure coverage is actually required, it needs the network
 path + service principal from Step 7b (or the checks can be validated separately by
 someone with Azure portal access) — it is not a defect in the run.
+
+### Where the value is — and the scope note to hand over with the report
+
+**The offline report is the OS/SAP half of a two-part assessment, and that half is
+complete.** Its value: it validates everything that most commonly causes SAP-on-Azure
+support issues — kernel and OS parameters, SAP-recommended tuning (saptune/tuned),
+package versions, filesystem/mount layout, OS-level networking, and HA/cluster
+configuration — all read directly from the servers. This is the core of a configuration
+review and stands on its own.
+
+**What it does not cover, because the jump is fully offline:** the Azure-infrastructure
+items — VM SKU, disk performance tier / IOPS / MBPS, accelerated networking, and HA
+placement (availability set / PPG / zones). These require Azure access. Most of them can
+be confirmed in minutes from the Azure portal, so the offline report plus a short portal
+cross-check equals a full picture.
+
+**So the second half of the assessment must be done one of two ways:**
+
+1. **By someone with Azure access** — read the VM SKU, disk SKUs/tiers, accelerated
+   networking and zone placement from the Azure portal or Cloud Shell, and validate them
+   against the SAP-on-Azure guidance; **or**
+2. **By enabling Azure access on the jump server** — the Step 7b path: a network route to
+   `management.azure.com` + `login.microsoftonline.com`, a read-only service principal,
+   and the `az` binary in the bundle. Then re-run and the Azure checks populate for real.
+
+**Scope note to paste into the deliverable / cover email:**
+
+> This assessment was run from a fully offline (air-gapped) jump server. The **OS and SAP
+> configuration checks are complete and reflect the actual state of the servers.** The
+> **Azure infrastructure checks** (VM SKU, disk performance tier/IOPS/MBPS, accelerated
+> networking, HA placement) **could not run offline** and appear as `N/A` / `INFO` /
+> `FAILED` in the report — this is a scope limitation, **not** a configuration defect.
+> These items will be validated separately by someone with Azure portal access, or by
+> enabling Azure access on the jump server (network route + read-only service principal)
+> and re-running.
