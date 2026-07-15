@@ -121,7 +121,44 @@ environment description).
 ## Step 2 — Download the bundle
 
 > 💻 **Run on: OPERATOR LAPTOP** (the machine with internet). Commands assume a
-> Linux/macOS shell; on Windows, use WSL (`wsl` in the Start menu) — same commands.
+> Linux/macOS shell; on Windows, use WSL (a Linux environment inside Windows) — same
+> commands. If you don't have WSL yet, do the one-time setup just below first.
+
+### First time on a Windows laptop? Install WSL (one-time)
+
+The commands in this step need a **Linux** environment. On Windows, the simplest way to
+get one is **WSL** (Windows Subsystem for Linux). You only do this once.
+
+1. Click **Start**, type **PowerShell**, right-click **Windows PowerShell** and choose
+   **Run as administrator**.
+2. In the blue window, type this one command and press Enter:
+
+   ```powershell
+   wsl --install
+   ```
+
+   This installs WSL and **Ubuntu** (a Linux distribution) automatically.
+3. **Restart the computer** when it asks.
+4. After the restart, an **Ubuntu** window opens by itself and asks you to create a
+   **username and password** — pick any; this is your Linux login (the password is
+   invisible as you type, that's normal).
+5. From now on, open **Ubuntu** from the Start menu whenever this guide says
+   "operator laptop". The first time, install the two helpers the bundle build needs:
+
+   ```bash
+   sudo apt-get update && sudo apt-get install -y python3-venv git
+   ```
+
+   (It will ask for the Ubuntu password you just created.)
+
+> **If `wsl --install` fails or is blocked:** WSL needs administrator rights, an internet
+> connection, and Windows 10 (version 2004+) or Windows 11. In locked-down corporate
+> laptops it is sometimes disabled by policy — if the command errors out, ask your IT
+> team to enable WSL, or use any Linux machine/VM you already have instead. You do **not**
+> need WSL on the jump server — only on this internet-connected laptop, and only to build
+> the bundle.
+
+Once you have a Linux shell (WSL/Ubuntu, macOS, or Linux), run:
 
 ```bash
 mkdir -p ~/sapqa-offline && cd ~/sapqa-offline
