@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+#
+# build-bundle.sh — Build the offline bundle on an internet-connected Linux operator
+# machine. Automates Step 2 of QUICKSTART.md end to end.
+#
+# Output: sapqa-offline-bundle.tar.gz (+ .sha256) — carry it to the offline jump server,
+# then run setup-and-run.sh there.
+#
+# Assumptions: Linux, python3 + python3-venv + git present, internet access.
+# Nothing customer-specific is needed here — this bundle is generic.
+#
+# Override any default with an environment variable, e.g.:
+#   WORKDIR=/tmp/sapqa ./build-bundle.sh
+#
+set -euo pipefail
+
+# ---- configuration (env-overridable) ---------------------------------------
+WORKDIR="${WORKDIR:-$HOME/sapqa-offline}"
+FRAMEWORK_REPO="${FRAMEWORK_REPO:-https://github.com/Azure/sap-automation-qa.git}"
+TOOLS_REPO="${TOOLS_REPO:-https://github.com/renatocamara/sap-automation-qa-offline.git}"
+ANSIBLE_CORE_CONSTRAINT="${ANSIBLE_CORE_CONSTRAINT:-ansible-core<2.17}"  # option B: no change on SAP servers
+TARGET_PYVER="${TARGET_PYVER:-3.11}"                 # the jump server's Python
+TARGET_PLATFORM="${TARGET_PLATFORM:-manylinux2014_x86_64}"
+
+# ---- helpers ----------------------------------------------------------------
+log()  { printf '\n\033[1;34m[build]\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m[build:warn]\033[0m %s\n' "$*"; }
+die()  { printf '\n\033[1;31m[build:ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
+
+# ---- preflight --------------------------------------------------------------
+log "Preflight checks"
+command -v python3 >/dev/null || die "python3 not found."
+command -v git     >/dev/null || die "git not found (sudo apt-get install -y git)."
+python3 -m venv --help >/dev/null 2>&1 || die "python3-venv missing (sudo apt-get install -y python3-venv)."
+python3 -c 'import ensurepip' 2>/dev/null || die "python3 venv/pip support missing (install python3-venv)."
+
+log "Working directory: $WORKDIR"
+mkdir -p "$WORKDIR" && cd "$WORKDIR"
+
+# ---- 0. build venv (PEP 668-safe) -------------------------------------------
+log "Creating build virtual environment (.buildenv)"
+python3 -m venv .buildenv
+# shellcheck disable=SC1091
+source .buildenv/bin/activate
+pip install --quiet --upgrade pip
+
+# ---- 1. framework + tools ---------------------------------------------------
+log "Cloning framework and tools repos"
+rm -rf sap-automation-qa tools
+git clone --depth 1 "$FRAMEWORK_REPO" sap-automation-qa
+git clone --depth 1 "$TOOLS_REPO" tools
+tar czf sap-automation-qa.tar.gz sap-automation-qa
+tar czf tools.tar.gz tools
+
+# ---- 2. Python dependencies (for the jump server platform) ------------------
+log "Downloading Python wheels (Linux/$TARGET_PLATFORM, py$TARGET_PYVER, '$ANSIBLE_CORE_CONSTRAINT')"
+echo "$ANSIBLE_CORE_CONSTRAINT" > constraints.txt
+rm -rf wheels && mkdir -p wheels
+pip download -r sap-automation-qa/requirements.in -c constraints.txt -d wheels/ \
+  --platform "$TARGET_PLATFORM" --python-version "$TARGET_PYVER" --only-binary=:all: \
+  || die "pip download failed. If one package has no matching wheel, see QUICKSTART Step 2 note."
+
+# ---- 3. Ansible collections -------------------------------------------------
+log "Downloading Ansible collections"
+pip install --quiet ansible-core
+rm -rf collections_offline && mkdir -p collections_offline
+ansible-galaxy collection download \
+  -r sap-automation-qa/collections/requirements.yml -p collections_offline/
+
+# ---- 4. jump-server RPMs (only useful on a RHEL 9 host with a subscription) --
+mkdir -p jump_rpms
+if command -v dnf >/dev/null 2>&1; then
+  log "RHEL host detected — attempting python3.11 + git RPM download for the jump server"
+  if dnf download --resolve --destdir=jump_rpms/ python3.11 python3.11-pip git sshpass 2>/dev/null; then
+    log "RPMs downloaded into jump_rpms/"
+  else
+    warn "RPM download skipped/failed — not fatal. Only needed if the jump server can't reach RHUI."
+    warn "If so, fetch these RPMs on a subscribed RHEL 9 box and drop them in $WORKDIR/jump_rpms/."
+  fi
+else
+  warn "Not a RHEL host — skipping jump_rpms."
+  warn "If the jump server can't reach Red Hat's RHUI, fetch python3.11/git RPMs on a RHEL 9"
+  warn "machine and place them in $WORKDIR/jump_rpms/ before packing (re-run with those present)."
+fi
+
+# ---- 5. pack + fingerprint --------------------------------------------------
+log "Packing the bundle"
+tar czf sapqa-offline-bundle.tar.gz \
+  sap-automation-qa.tar.gz tools.tar.gz wheels/ collections_offline/ jump_rpms/
+SUM=$(sha256sum sapqa-offline-bundle.tar.gz | awk '{print $1}')
+echo "$SUM  sapqa-offline-bundle.tar.gz" > sapqa-offline-bundle.tar.gz.sha256
+
+deactivate || true
+
+# ---- done -------------------------------------------------------------------
+log "DONE."
+cat <<EOF
+
+  Bundle : $WORKDIR/sapqa-offline-bundle.tar.gz
+  SHA256 : $SUM
+           (also saved to sapqa-offline-bundle.tar.gz.sha256)
+
+Next steps:
+  1) Copy the bundle to the jump server, e.g.:
+       scp "$WORKDIR/sapqa-offline-bundle.tar.gz" <user>@<jump-server>:~/
+  2) On the jump server, run setup-and-run.sh (it lives in tools/ inside the bundle,
+     or copy it over separately).
+EOF
