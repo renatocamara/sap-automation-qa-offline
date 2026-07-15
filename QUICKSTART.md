@@ -500,12 +500,27 @@ grep -E '^(TEST_TYPE|SYSTEM_CONFIG_NAME)' vars.yaml   # verify — must print yo
 (Prefer an editor? `nano vars.yaml`, change the same two lines, Ctrl+O + Enter,
 Ctrl+X.)
 
-### 7b. Azure authentication — only if the decision test said OK
+### 7b. Azure authentication — only if the jump server can reach Azure
 
-**If the endpoints were BLOCKED (expected here): nothing to do** — the fix script
-from Step 4 already made the framework tolerate the missing Azure login.
+**Why this step exists.** The framework runs **two kinds of checks**:
 
-**If both endpoints were OK:** someone with Azure access creates a read-only
+- **OS / SAP checks** — the jump server logs into the SAP servers over SSH and reads
+  operating-system and SAP configuration. These need only SSH. **No Azure involved.**
+- **Azure infrastructure checks** — validate things only Azure knows: the VM SKU, the
+  disks, the load balancer. To read those, the framework calls the **Azure management
+  APIs (ARM)**, and that call has to be **authenticated to Azure**. This step is what
+  provides that authentication.
+
+So 7b exists **only to enable the Azure-infrastructure part** of the report, and it
+only makes sense if the jump server can actually reach Azure. Use the decision test
+from earlier in this guide to decide which branch applies:
+
+**If the endpoints were BLOCKED (expected in the offline scenario): nothing to do.**
+Skip this step. The fix script from Step 4 already makes the framework tolerate the
+missing Azure login: **all OS/SAP checks still run**, and the Azure infrastructure
+checks simply show up as errors in the report — which is expected and fine.
+
+**If both endpoints were OK (jump has a route to Azure):** someone with Azure access creates a read-only
 service principal, then the jump server logs in with it (twice — the framework's
 Azure collectors run as root):
 
@@ -561,3 +576,23 @@ scp <user>@<jump-server>:"~/sap-automation-qa/WORKSPACES/SYSTEM/<NAME>/quality_a
 ```
 
 Open the HTML in a browser; share with Microsoft for review and recommendations.
+
+### ⚠️ Reading the report in the offline scenario — this is expected, not a bug
+
+Because the jump server is **offline and cannot reach Azure** (Step 7b was skipped),
+the report is split in two, and **this is normal**:
+
+- ✅ **OS / SAP checks — real results.** Everything read over SSH from the SAP servers
+  (operating-system settings, SAP configuration, HA/cluster, filesystems, kernel
+  parameters) ran normally and shows **actual pass/fail results**. This is the bulk of
+  the assessment and it is complete.
+- ⚠️ **Azure infrastructure checks — shown as errors/blank.** Everything that needs the
+  Azure management APIs (VM SKU, disk layout, load balancer, accelerated networking)
+  could not run, because there is no Azure login in an offline jump. These rows appear
+  as errors or empty. **This does not mean the report failed** — it means those specific
+  checks were out of scope for an offline run.
+
+**Tell the customer this up front** so no one reads the Azure-check errors as a broken
+report. If Azure-infrastructure coverage is actually required, it needs the network
+path + service principal from Step 7b (or the checks can be validated separately by
+someone with Azure portal access) — it is not a defect in the run.
