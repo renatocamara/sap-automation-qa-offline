@@ -477,7 +477,15 @@ cd ../../..
 
 ### 7a. Edit `vars.yaml` — 2 lines
 
-`vars.yaml` already exists — change exactly **two lines** and leave the rest:
+`vars.yaml` already exists in the **root of the `sap-automation-qa` folder** (not in
+the workspace) — the framework ships it. Make sure you are there first:
+
+```bash
+cd ~/sap-automation-qa      # vars.yaml lives in this directory
+ls vars.yaml                # should exist
+```
+
+Then change exactly **two lines** and leave the rest:
 
 | Line | Set it to | Why |
 |---|---|---|
