@@ -39,6 +39,7 @@ SSH_USER="${SSH_USER:-}"
 AUTH_MODE="${AUTH_MODE:-}"           # keyfile | agent
 SSH_KEY_PATH="${SSH_KEY_PATH:-}"     # required if AUTH_MODE=keyfile
 AZURE_ACCESS="${AZURE_ACCESS:-no}"   # yes | no  (no => offline, skip Azure auth)
+SHRED_KEY="${SHRED_KEY:-}"           # 1 = shred the workspace key file after the run
 # SAP parameters (sensible defaults matching QUICKSTART 6.3)
 DB_SID="${DB_SID:-HDB}"
 PLATFORM="${PLATFORM:-HANA}"
@@ -187,14 +188,22 @@ gather_inputs() {
     echo "  How should the jump authenticate to the SAP servers?"
     echo "    1) key file  (copied into the workspace as ssh_key.ppk, chmod 600)"
     echo "    2) ssh-agent (no key file on disk — recommended by many security teams)"
-    case "$(ask '  Choose 1 or 2' '2')" in
-      1) AUTH_MODE="keyfile";;
-      *) AUTH_MODE="agent";;
-    esac
+    while [[ -z "$AUTH_MODE" ]]; do
+      local _ans; _ans="$(ask '  Choose 1 or 2 (or paste a key path for option 1)' '2')"
+      case "$_ans" in
+        1) AUTH_MODE="keyfile";;
+        2) AUTH_MODE="agent";;
+        /*|"~"/*|*/*)   # looks like a path -> treat as key file (option 1)
+          AUTH_MODE="keyfile"; SSH_KEY_PATH="${_ans/#\~/$HOME}"
+          echo "  (read '$_ans' as a key file path -> using option 1)";;
+        *) warn "please answer 1 or 2 (or a key file path)";;
+      esac
+    done
   fi
   if [[ "$AUTH_MODE" == "keyfile" && -z "$SSH_KEY_PATH" ]]; then
     SSH_KEY_PATH="$(ask '  Path to the private key file')"
   fi
+  SSH_KEY_PATH="${SSH_KEY_PATH/#\~/$HOME}"
   [[ "$AUTH_MODE" == "keyfile" && ! -f "$SSH_KEY_PATH" ]] && die "key file not found: $SSH_KEY_PATH"
 
   if [[ -z "${AZURE_ACCESS_SET:-}" && "$ASSUME_YES" != "1" ]]; then
@@ -381,6 +390,27 @@ EOF
 }
 
 # =============================================================================
+# 8) KEY HYGIENE — optionally shred the key file left in the workspace
+# =============================================================================
+shred_key() {
+  [[ "$AUTH_MODE" == "keyfile" ]] || return 0
+  local wskey="$WS/ssh_key.ppk"
+  [[ -f "$wskey" ]] || return 0
+  local do_shred=0
+  if [[ "${SHRED_KEY:-}" == "1" ]]; then
+    do_shred=1
+  elif [[ "$ASSUME_YES" != "1" ]]; then
+    confirm "Shred the key file copied into the workspace ($wskey) now?" && do_shred=1
+  fi
+  if [[ $do_shred -eq 1 ]]; then
+    shred -u "$wskey" 2>/dev/null && log "Workspace key shredded ($wskey)."
+    [[ -n "$SSH_KEY_PATH" ]] && log "Your source key is still on disk: $SSH_KEY_PATH — remove it separately if desired."
+  else
+    warn "Key file left at $wskey — shred it when done:  shred -u '$wskey'"
+  fi
+}
+
+# =============================================================================
 # main
 # =============================================================================
 main() {
@@ -407,6 +437,7 @@ main() {
   connectivity_check
   run_checks
   summarize
+  shred_key
   log "All done."
 }
 main "$@"
