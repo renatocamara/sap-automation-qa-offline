@@ -106,11 +106,18 @@ install_offline() {
 
   cd "$WORK_DIR"
   tar xzf "$BUNDLE"
-  # python3.11 from carried RPMs, only if the jump lacks it (Step 1 dnf failed)
+  # python3.11 from carried RPMs, only if the jump lacks it.
+  # Use dnf with all repos disabled: it installs the local RPM set OFFLINE, resolves
+  # dependencies among them, and SKIPS any package already present — unlike `rpm -Uvh`,
+  # which is atomic and aborts the whole transaction if one RPM is already installed.
   if ! command -v python3.11 >/dev/null 2>&1; then
     if compgen -G "jump_rpms/*.rpm" >/dev/null; then
-      log "Installing python3.11/git from carried RPMs (jump has no python3.11)"
-      sudo rpm -Uvh jump_rpms/*.rpm 2>/dev/null || warn "some RPMs may already be present"
+      log "Installing python3.11 from carried RPMs (offline)"
+      sudo dnf install -y --disablerepo='*' jump_rpms/*.rpm \
+        || sudo rpm -Uvh --replacepkgs jump_rpms/*.rpm \
+        || warn "RPM install reported errors — verifying below"
+      command -v python3.11 >/dev/null 2>&1 \
+        || die "python3.11 still not found after installing jump_rpms. Try manually: sudo dnf install -y --disablerepo='*' jump_rpms/*.rpm"
     else
       die "python3.11 not present and no jump_rpms/*.rpm in the bundle. See QUICKSTART Step 1/2."
     fi
