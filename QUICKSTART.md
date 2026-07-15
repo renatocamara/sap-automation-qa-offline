@@ -540,14 +540,15 @@ sudo az account set --subscription <SUB_ID>
 
 ## Step 8 — Run
 
-> ☁️ **Run on: JUMP SERVER**, inside `sap-automation-qa`, venv active
-> (`source .venv/bin/activate` — prompt shows `(.venv)`).
+> ☁️ **Run on: JUMP SERVER.**
 
-One command, no parameters — runs **all** check families against every server in
+Run these three commands. Runs **all** check families against every server in
 `hosts.yaml`. Takes several minutes; read-only, nothing on SAP changes:
 
 ```bash
-./scripts/sap_automation_qa.sh
+cd ~/sap-automation-qa            # the framework folder
+source .venv/bin/activate         # activate the venv — prompt must show (.venv)
+./scripts/sap_automation_qa.sh    # run all checks
 ```
 
 **Optional — `--extra-vars`:** the script normally reads its settings from
