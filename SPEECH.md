@@ -144,23 +144,57 @@ about it first. For today, treat it as: read the heading, move on.
 ## Step 6 — Describe the SAP system (workspace)
 
 Step six is where we describe your SAP landscape to the tool. Think of it as filling in a
-short form. We create a folder for this system, and inside it we tell the tool three
-things: which servers to check and their IP addresses, a few facts about the SAP system
-itself, and how to log into the servers. On that last part — the credentials — we use the
-approach your security team is most comfortable with, and the guide walks through the
-options. Nothing here is guesswork; each field is explained, and you're really just
+short form. There are four small pieces to it — a folder, and three files inside it —
+and I'll walk through each one. Nothing here is guesswork; you're really just
 transcribing what you already know about your own systems.
+
+### 6.1 — Create the workspace folder
+
+First we make a folder that represents this specific SAP system. The name follows a
+simple convention so it's easy to tell environments apart later — think environment,
+region, and the system ID. The one thing that matters is that this folder name matches
+what we set in the config file in the next step. We'll keep them in sync.
+
+### 6.2 — hosts.yaml: the servers to check
+
+Next, the list of servers. This file is where we put each SAP server we want to check —
+its address, how we connect, and which role it plays, like database or application. It
+already includes one line that points the tool at the server's own Python, which is part
+of what lets us run without installing anything on the SAP side. So we just fill in your
+server names and addresses, and we're set.
+
+### 6.3 — sap-parameters.yaml: what the system looks like
+
+Then a few facts about the SAP system itself — things like the system ID and a couple of
+attributes about how it's deployed. It's short. This gives the checks the context they
+need to know what "good" looks like for your particular setup.
+
+### 6.4 — Credentials: how we log into the servers
+
+And last, how the jump server authenticates to the SAP servers. This is the part your
+security team will care most about, so we use whatever approach they're most comfortable
+with — the guide lays out the options. The key point I want to make: these are read-only
+logins used only to inspect configuration, and we handle the credentials the way your
+policies require.
 
 ---
 
 ## Step 7 — Configure, and authenticate if applicable
 
-Step seven is the final bit of setup, and it's short. There's a small file where we set
-two things: the type of check we're running, and the name of the system folder we just
-created. That's it for the core run. There's also an optional part here about
-authenticating to Azure — but that only applies if we decided earlier to include the
-Azure checks and the server actually has a route to Azure. In a fully offline run, we
-skip it, and the guide already makes the tool handle that gracefully.
+Step seven is the final bit of setup, and it's short — two small parts.
+
+### 7a — Edit vars.yaml: two lines
+
+The first part is a small file where we set just two things: the type of check we're
+running, and the name of the system folder we created in the last step. That's genuinely
+it — two lines — and then the core run is ready to go.
+
+### 7b — Azure authentication (only if applicable)
+
+The second part is optional, and it only comes into play if we decided earlier to include
+the Azure checks and the jump server actually has a route to Azure. In a fully offline
+run — which is our case — we simply skip this, and the guide already makes the tool handle
+that gracefully. So for us, step seven really is just those two lines.
 
 ---
 
@@ -175,21 +209,26 @@ already written.
 
 ---
 
-## Step 9 — Collect the report, and read it correctly
+## Step 9 — Collect the report
 
 Last step — we collect the report. We copy the HTML file back to your laptop and open it
-in a browser. Now, this is the part I really want to set expectations on, so nobody
-misreads it. The report comes in two halves. The operating-system and SAP configuration
-checks — that's the bulk of it — ran completely, and those are real results you can act
-on. The Azure infrastructure checks, because we ran offline, show up as errors or as
-"not available." **That is expected. It is not a broken report and it is not a problem
-with your servers** — those checks were simply out of scope for an offline run. A couple
-of the HANA storage checks fall into that Azure group too, so you'll see those as "not
-available" as well.
+in a browser. And then there are two things I want to say about reading it.
 
-Where's the value in all this? The half that ran is the heart of a configuration review
-— it's exactly the settings that most often cause SAP-on-Azure support issues, and we
-validated all of it directly against your servers. The other half — the Azure
+### Reading the report in the offline scenario
+
+This is the part I really want to set expectations on, so nobody misreads it. The report
+comes in two halves. The operating-system and SAP configuration checks — that's the bulk
+of it — ran completely, and those are real results you can act on. The Azure
+infrastructure checks, because we ran offline, show up as errors or as "not available."
+**That is expected. It is not a broken report and it is not a problem with your servers**
+— those checks were simply out of scope for an offline run. A couple of the HANA storage
+checks fall into that Azure group too, so you'll see those as "not available" as well.
+
+### Where the value is
+
+So where's the value in all this? The half that ran is the heart of a configuration
+review — it's exactly the settings that most often cause SAP-on-Azure support issues, and
+we validated all of it directly against your servers. The other half — the Azure
 infrastructure side — can be confirmed in minutes by someone with portal access, or by
 enabling that Azure path on the jump server if you want the tool to pull it directly. So
 the way to think about it: today we complete the OS and SAP half end to end, and we close
