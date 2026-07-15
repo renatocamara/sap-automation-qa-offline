@@ -549,6 +549,17 @@ sudo az account set --subscription <SUB_ID>
 (This branch also requires the `azure-cli` RPM — downloadable on the laptop from
 `packages.microsoft.com/yumrepos/azure-cli/` and transferred with the bundle.)
 
+> ⚠️ **The `az` binary alone does NOT enable the Azure checks.** Adding the `azure-cli`
+> RPM to the bundle is necessary but not sufficient. Those checks read disk/VM
+> properties from the Azure management API, so `az` must be able to **reach Azure over
+> the network** (`management.azure.com` + `login.microsoftonline.com`) **and
+> authenticate** (the service principal above). On a jump with no route to Azure,
+> installing `az` only changes the error from `az: command not found` to a login/connect
+> failure — the checks are still `N/A`. In other words, this needs all three together:
+> **(1) a network path to Azure, (2) a service principal, (3) the `az` binary.** If the
+> jump must stay fully air-gapped, `az` cannot help — instead, have someone with Azure
+> portal/Cloud Shell access collect the disk data separately (see the note in Step 9).
+
 ## Step 8 — Run
 
 > ☁️ **Run on: JUMP SERVER.**
