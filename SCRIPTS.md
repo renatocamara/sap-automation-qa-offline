@@ -20,9 +20,14 @@ with a SHA-256.
 
 ```bash
 ./build-bundle.sh
-# then copy the bundle to the jump server:
-scp ~/sapqa-offline/sapqa-offline-bundle.tar.gz <user>@<jump-server>:~/
+# then copy the bundle AND the runner to the jump server:
+scp ~/sapqa-offline/sapqa-offline-bundle.tar.gz \
+    ~/sapqa-offline/setup-and-run.sh <user>@<jump-server>:~/
 ```
+
+For convenience the build also drops a copy of `setup-and-run.sh` and
+`answers.env.example` **next to** the bundle in the output folder, so you can transfer
+the runner without first extracting it from `tools.tar.gz` inside the bundle.
 
 Common overrides (environment variables): `WORKDIR`, `TARGET_PYVER`, `TARGET_PLATFORM`,
 `ANSIBLE_CORE_CONSTRAINT`.
@@ -64,8 +69,8 @@ stay `N/A` offline by design — see the scope note the script prints at the end
 
 ```
 [laptop]  ./build-bundle.sh
-[laptop]  scp .../sapqa-offline-bundle.tar.gz user@jump:~/
+[laptop]  scp .../sapqa-offline-bundle.tar.gz .../setup-and-run.sh user@jump:~/
 [jump]    eval "$(ssh-agent -s)"; ssh-add ~/sap-checks-key     # if using agent mode
-[jump]    ./setup-and-run.sh            # or: --answers answers.env
+[jump]    bash ~/setup-and-run.sh       # or: --answers answers.env
 [laptop]  scp user@jump:".../CONFIG_*.html" .                  # collect the report
 ```

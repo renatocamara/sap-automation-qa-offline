@@ -90,6 +90,15 @@ tar czf sapqa-offline-bundle.tar.gz \
 SUM=$(sha256sum sapqa-offline-bundle.tar.gz | awk '{print $1}')
 echo "$SUM  sapqa-offline-bundle.tar.gz" > sapqa-offline-bundle.tar.gz.sha256
 
+# Drop the jump-server runner (and answers template) NEXT TO the bundle, so the operator
+# can start it without first digging it out of tools.tar.gz inside the bundle.
+for f in setup-and-run.sh answers.env.example; do
+  if [[ -f "tools/$f" ]]; then
+    cp "tools/$f" "./$f"
+    [[ "$f" == *.sh ]] && chmod +x "./$f"
+  fi
+done
+
 deactivate || true
 
 # ---- done -------------------------------------------------------------------
@@ -99,10 +108,13 @@ cat <<EOF
   Bundle : $WORKDIR/sapqa-offline-bundle.tar.gz
   SHA256 : $SUM
            (also saved to sapqa-offline-bundle.tar.gz.sha256)
+  Runner : $WORKDIR/setup-and-run.sh          (copied out for convenience)
+           $WORKDIR/answers.env.example
 
 Next steps:
-  1) Copy the bundle to the jump server, e.g.:
-       scp "$WORKDIR/sapqa-offline-bundle.tar.gz" <user>@<jump-server>:~/
-  2) On the jump server, run setup-and-run.sh (it lives in tools/ inside the bundle,
-     or copy it over separately).
+  1) Copy the bundle AND the runner to the jump server, e.g.:
+       scp "$WORKDIR/sapqa-offline-bundle.tar.gz" \\
+           "$WORKDIR/setup-and-run.sh" <user>@<jump-server>:~/
+  2) On the jump server, run it (it extracts and installs the bundle itself):
+       bash ~/setup-and-run.sh
 EOF
