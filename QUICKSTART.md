@@ -602,7 +602,17 @@ the report is split in two, and **this is normal**:
   Azure management APIs (VM SKU, disk layout, load balancer, accelerated networking)
   could not run, because there is no Azure login in an offline jump. These rows appear
   as errors or empty. **This does not mean the report failed** — it means those specific
-  checks were out of scope for an offline run.
+  checks were out of scope for an offline run. In the report these show up either as
+  `INFO — "Azure CLI not available"` or as `FAILED` with `az: command not found`.
+
+  **Important — some HANA storage checks are in this Azure group.** The HANA
+  disk-performance and storage-layout checks (stripe size, disk IOPS/MBPS, disk type,
+  performance tier, supported storage type — `DB-HANA-00xx`) are Azure-collector checks:
+  they read disk metadata from Azure, so **offline they come back `N/A` / `FAILED` too.**
+  These are genuinely useful for a HANA sizing review, so if the customer needs them
+  they must be run with Azure access (Step 7b: service principal + `management.azure.com`)
+  or validated separately by someone with Azure portal access. Their absence here is the
+  offline limitation, not a storage defect on the server.
 
 **Tell the customer this up front** so no one reads the Azure-check errors as a broken
 report. If Azure-infrastructure coverage is actually required, it needs the network
