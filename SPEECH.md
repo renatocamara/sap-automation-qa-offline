@@ -243,3 +243,66 @@ So that's the whole flow — prepare once on the laptop, carry it in, run read-o
 from the jump server, and share the report. The headline I want to leave you with:
 nothing gets installed or changed on your SAP servers, and nothing here needs internet
 access opened up. Let's get into it — and again, stop me with questions at any point.
+
+---
+
+# Presenting the one-shot scripts (SCRIPTS.md)
+
+Use this part if you're showing the automation instead of, or after, the manual walk-
+through. Same idea, spoken naturally. Each block maps to a section of
+[SCRIPTS.md](./SCRIPTS.md). A full read-through is about 5 minutes.
+
+## Why we built scripts on top of the guide
+
+Everything I just walked through can be done by hand from the guide — and the guide stays
+the source of truth. But because it's the same steps every time, we also wrapped it into
+two small scripts, so a run is repeatable and there's less room for a typo. One important
+thing up front: because there's an air gap between the internet laptop and the offline
+jump server, this is deliberately **two scripts with one manual copy in between** — no
+single script can cross that gap, and we didn't want to pretend otherwise.
+
+## Script one — build the bundle (on the laptop)
+
+The first script runs on the internet laptop and it's fully automatic — it doesn't ask
+you anything, because there's nothing customer-specific about it. It pulls the framework,
+all its Python dependencies, the Ansible pieces, and the little bit the jump server needs,
+and packs it into a single file with a fingerprint so we can verify it copied cleanly.
+
+One requirement worth calling out: this step needs either **podman or docker** on the
+laptop. That's because a fresh RHEL 9 jump server doesn't ship the newer Python the
+framework needs, so the script fetches those packages using a small Red Hat base-image
+container — no Red Hat subscription required. On a Windows laptop, this runs inside WSL,
+which is a quick one-time setup we document. If the laptop can't run a container, the
+alternative is to build the bundle on any RHEL machine.
+
+## The hand-off
+
+Then we copy two things to the jump server — the bundle and the runner script. That's the
+one manual step across the air gap, and it's just a secure copy.
+
+## Script two — set up and run (on the jump server)
+
+The second script is the interesting one. It asks for the handful of customer-specific
+details up front — the SAP system ID, the servers and their addresses, the login method —
+and then it does everything else on its own: the offline install, writing the
+configuration, checking it can reach each server, running the read-only checks, and
+summarizing the report at the end. Before it changes anything, it shows you a summary and
+waits for you to confirm.
+
+On the login method, there are two options, and this is the part your security team will
+care about. Either we use a key file, which the script places in the workspace and locks
+down — and can shred for you afterwards — or, the cleaner option, we use **ssh-agent
+forwarding**: the key stays on the operator's laptop and is simply borrowed over the SSH
+session, so it never touches the jump server's disk at all. We validated both.
+
+And for a fully unattended, auditable run, all of those answers can go in a small file
+that your security team reviews before anything executes — no interactive prompts.
+
+## What you can trust about it
+
+Two things I want to leave you with on the automation. First, it's read-only against your
+SAP servers — same as the manual procedure; it only inspects. Second, we didn't just
+write it — we validated it end to end on a clean RHEL 9 jump server built from scratch,
+and all the paths — manual, scripted with a key file, and scripted with agent forwarding —
+produced the exact same report. So the convenience doesn't cost you any confidence in the
+result.
