@@ -62,8 +62,16 @@ servers (`tier:hostname:ip`), the credential method, and whether the jump can re
 
 **Credentials — two modes, matching QUICKSTART 6.4:**
 
-- `agent` (default, recommended): uses `ssh-agent`, **no key file on disk**. Load the key
-  first: `eval "$(ssh-agent -s)"; ssh-add <key>`. The script runs the playbook directly.
+- `agent` (default, recommended): uses `ssh-agent`, **no key file on disk**. The cleanest
+  way (✅ lab-validated) is **agent forwarding** — load the key into your **laptop's**
+  agent and connect to the jump with `ssh -A`, so the key never touches the jump:
+  ```bash
+  # on the laptop:
+  eval "$(ssh-agent -s)"; ssh-add ~/.ssh/<key>; ssh -A <user>@<jump>
+  # on the jump: ssh-add -l should show the key; then run ./setup-and-run.sh -> option 2
+  ```
+  (Don't run `ssh-agent` again on the jump when using `-A` — it would start an empty
+  agent and break forwarding.) The script detects the agent and runs the playbook directly.
 - `keyfile`: you give a path; the script copies it into the workspace as `ssh_key.ppk`
   (`chmod 600`) and uses the wrapper. Consider `shred -u` afterwards.
 
