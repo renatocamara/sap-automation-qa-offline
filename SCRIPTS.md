@@ -6,9 +6,10 @@ the *why* behind each step. Because of the air gap between the internet laptop a
 offline jump server, this is **two scripts with one manual copy in between** — a single
 process cannot cross that gap.
 
-> ⚠️ **Test these in a lab first** (see [LAB.md](./LAB.md)) before using them with a
-> customer. They are read-only against the SAP servers, but you want to see the prompts
-> and output on a throwaway environment first.
+> ⚠️ **Run against a non-production SAP system (DEV/QAS) first.** The checks are read-only,
+> but it's good practice to see the prompts and output against a non-prod system before
+> production. [LAB.md](./LAB.md) shows how to spin up a throwaway lab to rehearse the whole
+> flow.
 
 > ✅ **Lab-validated end to end (2026-07-16).** On a clean RHEL 9 jump (no framework, no
 > python3.11), all four paths produced an identical report (`26 INFO + 14 FAILED`,
