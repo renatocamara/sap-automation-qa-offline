@@ -22,6 +22,8 @@ the laptop and shared with Microsoft. Full procedure:
 | File | Description |
 |---|---|
 | [QUICKSTART.md](./QUICKSTART.md) | **Start here — the customer procedure.** Assumes an existing offline jump server. Background, the "does anything get installed on SAP?" answer, the environment ([diagram](./architecture-onprem.svg)), and the step-by-step: laptop downloads bundle → scp to jump server → offline install + validated fixes → checks → report back to laptop. |
+| [SCRIPTS.md](./SCRIPTS.md) + [build-bundle.sh](./build-bundle.sh) + [setup-and-run.sh](./setup-and-run.sh) | **One-shot automation of the whole procedure.** `build-bundle.sh` builds the offline bundle on the laptop; `setup-and-run.sh` runs everything on the jump server (offline install, workspace, run, report) with the inputs prompted up front. All four end-to-end paths lab-validated on a clean RHEL 9 jump. |
+| [SPEECH.md](./SPEECH.md) | Presenter/teleprompter script for walking a customer through the procedure live — one spoken segment per QUICKSTART block and sub-step. |
 | [LAB-FINDINGS.md](./LAB-FINDINGS.md) | The real issues found and fixed while validating the procedure end to end, each with root cause and fix. |
 | [sap-automation-qa-offline-install.md](./sap-automation-qa-offline-install.md) | **Deep-dive reference** for the offline installation — the *why* behind each step. |
 | [LAB.md](./LAB.md) + [deploy-sap-sim-lab.sh](./deploy-sap-sim-lab.sh) | **Optional — for testing only, not part of the customer procedure.** A helper that builds a throwaway Azure lab (offline RHEL 9 jump + two RHEL 8.10/Python 3.6 SAP sims) to reproduce and rehearse the whole scenario from scratch. |
