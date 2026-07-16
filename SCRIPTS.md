@@ -10,6 +10,11 @@ process cannot cross that gap.
 > customer. They are read-only against the SAP servers, but you want to see the prompts
 > and output on a throwaway environment first.
 
+> ✅ **Lab-validated end to end (2026-07-16).** On a clean RHEL 9 jump (no framework, no
+> python3.11), all four paths produced an identical report (`26 INFO + 14 FAILED`,
+> `failed=0` on every SAP host): manual run with a key file, one-shot `setup-and-run.sh`
+> with a key file, and one-shot with ssh-agent forwarding. See [LAB-FINDINGS.md](./LAB-FINDINGS.md).
+
 ## 1. `build-bundle.sh` — on the operator laptop (internet, Linux)
 
 Fully automatic; no customer-specific input. It creates a build venv, clones the
