@@ -766,3 +766,88 @@ cross-check equals a full picture.
 > These items will be validated separately by someone with Azure portal access, or by
 > enabling Azure access on the jump server (network route + read-only service principal)
 > and re-running.
+
+## Troubleshooting — errors seen in the field
+
+All of these come from real runs. Each one is caused by skipping a step or by starting
+from the framework's upstream sample files instead of the templates in this guide.
+
+### `az: command not found`
+
+```
+[INFO] Key Vault ID and Secret ID are set. Retrieving SSH key from Key Vault.
+[INFO] Authenticating using MSI...
+./scripts/sap_automation_qa.sh: line 429: az: command not found
+```
+
+**Cause:** `sap-parameters.yaml` contains `key_vault_id` / `secret_id`. The upstream sample
+ships them pre-filled with *placeholders* (`<key-vault-name>`, `<subscription-id>`). The
+wrapper only checks that they are **non-empty** — it does not validate them — so the
+placeholder text sends it down the Key Vault path, which needs `az` + a managed identity.
+Neither exists on an offline jump.
+
+**Fix:** clear them (Step 6.3) and use the local key file in the workspace (Step 6.4).
+
+### The run uses `playbook_00_ha_db_functional_tests` (⚠️ disruptive)
+
+```
+[INFO] TEST_TYPE: SAPFunctionalTests
+[INFO] Using playbook: playbook_00_ha_db_functional_tests
+```
+
+**Cause:** `vars.yaml` is still at the framework's factory default. That playbook performs
+**real HA failover scenarios** — it is not the read-only configuration check.
+
+**Fix:** Step 7a. Confirm the header prints `TEST_TYPE: ConfigurationChecks` and
+`Using playbook: playbook_00_configuration_checks` before letting it run. Passing
+`--extra-vars '{"configuration_test_type":"Database"}'` does **not** change the test type.
+
+### `sudo: a password is required` on `localhost`
+
+```
+TASK [Init: Install Required Python Azure Packages]
+fatal: [localhost]: FAILED! => {"module_stderr": "sudo: a password is required\nSorry.\n"}
+```
+
+**Cause:** this task runs on the **jump server itself** (`localhost`), escalating to root to
+pip-install Azure SDK packages. It fails if the operator account has no passwordless sudo —
+common where privilege elevation is centrally controlled (BoKS, CyberArk, Centrify). Offline
+it could not succeed anyway: there is no path to PyPI and no Azure to talk to.
+
+**Fix:** apply the validated fixes from **Step 4** (`apply-framework-fixes.sh`), which make
+these localhost init tasks non-fatal so the run continues into the actual checks. Granting
+passwordless sudo on the jump is *not* required.
+
+### `found a duplicate dict key (become_user)`
+
+```
+[WARNING]: While constructing a mapping from .../hosts.yaml, line 23, column 7,
+found a duplicate dict key (become_user). Using last defined value only.
+```
+
+**Cause:** the same key appears twice under a host in `hosts.yaml`, usually after hand-editing.
+YAML keeps only the last one, which may not be the value you intended.
+
+**Fix:** open `hosts.yaml` at the reported line and remove the duplicate.
+
+### Privilege escalation in PAM-controlled environments (BoKS / CyberArk / Centrify)
+
+Where `sudo` to root is brokered by a PAM product, Ansible's default `sudo` escalation may be
+blocked. Ansible has no plugin for these products, but the escalation executable can be
+overridden per host in `hosts.yaml` — for example, for BoKS `suexec`:
+
+```yaml
+      ansible_become: true
+      ansible_become_method: su
+      ansible_become_user: root
+      ansible_become_exe: "suexec su"
+```
+
+Validate on a single host before running the full checks:
+
+```bash
+ansible <GROUP> -i WORKSPACES/SYSTEM/<name>/hosts.yaml -m command -a 'id' -b
+```
+
+`uid=0(root)` means escalation works. See
+[Ansible — privilege escalation](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_privilege_escalation.html).
