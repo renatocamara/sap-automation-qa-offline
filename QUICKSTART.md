@@ -317,6 +317,12 @@ cd WORKSPACES/SYSTEM/PRD-EUS2-SAP01-AMS
 
 Whatever name you choose here, use the same one for `SYSTEM_CONFIG_NAME` in Step 7.
 
+> ⚠️ **Do not run against the sample workspace that ships with the framework.** The
+> upstream clone includes an example folder — `WORKSPACES/SYSTEM/DEV-WEEU-SAP01-X00` —
+> populated with placeholder values. Running against it is a common mistake and causes
+> confusing failures (see the Key Vault note in 6.3). **Create your own folder as above**
+> and leave the sample one untouched.
+
 > **What is a SID?** The SID (System ID) is the unique 3-letter uppercase code that
 > identifies an SAP system (e.g. `PRD`, `QAS`); the database has its own DB SID (for
 > HANA, often `HDB`). Find the real values from your SAP Basis team, or read them off
@@ -429,6 +435,24 @@ EOF
 If HA is `true`, also add `scs_cluster_type`/`database_cluster_type` (`AFA`, `ISCSI`
 or `ASD`) — see the upstream
 [SETUP guide, section 2.2](https://github.com/Azure/sap-automation-qa/blob/main/docs/SETUP.MD#22-system-configuration-workspaces).
+
+> ⚠️ **Make sure there is no `key_vault_id` / `secret_id` in this file.** The upstream
+> sample `sap-parameters.yaml` ships with Key Vault lines pre-filled with *placeholders*
+> like `<key-vault-name>` and `<subscription-id>`. The wrapper only checks whether those
+> variables are **non-empty** — it does not validate them — so even the untouched
+> placeholder text makes it take the Key Vault path: it runs `az login --identity` and
+> fails on an offline jump with **`az: command not found`**. The template above simply
+> omits them, which is what you want. If you started from the upstream sample instead,
+> clear them explicitly:
+>
+> ```yaml
+> key_vault_id: ""
+> secret_id: ""
+> user_assigned_identity_client_id: ""
+> ```
+>
+> Offline, the SSH key comes from the local file in this workspace (6.4) — never from
+> Key Vault.
 
 ### 6.4 Credentials — how the jump server authenticates to the SAP servers
 
@@ -573,6 +597,21 @@ grep -E '^(TEST_TYPE|SYSTEM_CONFIG_NAME)' vars.yaml   # verify — must print yo
 
 (Prefer an editor? `nano vars.yaml`, change the same two lines, Ctrl+O + Enter,
 Ctrl+X.)
+
+> ⚠️ **Do not skip the `TEST_TYPE` line.** The framework ships with
+> `TEST_TYPE: "SAPFunctionalTests"` as its factory default, which selects
+> `playbook_00_ha_db_functional_tests` — the **high-availability functional tests**.
+> Those perform **real failover scenarios** (node takeover, network isolation) and are
+> **disruptive**, unlike the configuration checks, which are strictly read-only. Always
+> confirm the run header says:
+>
+> ```
+> [INFO] TEST_TYPE: ConfigurationChecks
+> [INFO] Using playbook: playbook_00_configuration_checks
+> ```
+>
+> If it says `SAPFunctionalTests` / `playbook_00_ha_db_functional_tests`, stop — the two
+> lines above were not applied.
 
 ### 7b. Azure authentication — only if the jump server can reach Azure
 
