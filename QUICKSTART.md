@@ -772,6 +772,35 @@ cross-check equals a full picture.
 All of these come from real runs. Each one is caused by skipping a step or by starting
 from the framework's upstream sample files instead of the templates in this guide.
 
+### ⚠️ First: how to tell a run actually worked
+
+A run can finish with `return code: 0` **and produce an HTML report that is completely
+empty.** Before trusting any report, check all three:
+
+1. The `PLAY RECAP` lists **your SAP hosts**, not just `localhost`.
+2. The log does **not** say `skipping: no hosts matched`.
+3. The report header shows **`Total Checks:` greater than 0** and a populated `Hostnames:`.
+
+### `no hosts matched` → empty report (`Total Checks: 0`)
+
+```
+[WARNING]: Could not match supplied host pattern, ignoring: YRMJ_DB
+[WARNING]: Could not match supplied host pattern, ignoring: YRMJ_SCS
+PLAY [Host tasks] ****  skipping: no hosts matched
+"Configuration checks completed. Check types executed: []"
+PLAY RECAP: localhost : ok=17 ...
+```
+
+**Cause:** the group names in `hosts.yaml` do not match what the playbook derives from
+`sap_sid` in `sap-parameters.yaml`. The playbook looks for `<sap_sid>_DB`,
+`<sap_sid>_SCS`, `<sap_sid>_APP`, etc. If `sap_sid: "YRMJ"` but the inventory groups are
+named anything else (different SID, lowercase, or hosts listed without groups), **nothing
+matches and zero checks run** — yet the playbook still exits 0 and writes a report.
+
+**Fix:** make the group names in `hosts.yaml` exactly `<sap_sid>_DB` / `<sap_sid>_SCS` /
+`<sap_sid>_APP` …, **uppercase**, using the *same* SID as `sap_sid` in
+`sap-parameters.yaml` (Step 6.2 / 6.3). Then re-run and confirm the three checks above.
+
 ### `az: command not found`
 
 ```
