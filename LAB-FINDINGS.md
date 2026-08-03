@@ -1,6 +1,16 @@
 # Lab validation findings — SAP configuration checks
 
-**Date:** 2026-07-13 · **Framework:** Azure/sap-automation-qa v1.1.2 · **Result:** ✅ end-to-end success
+**Date:** 2026-07-13 · **Framework:** Azure/sap-automation-qa (originally validated on v1.1.2; see version note) · **Result:** ✅ end-to-end success
+
+> **Version & runtime note.** These findings were first captured on framework **v1.1.2**.
+> **v1.1.3** is the current latest upstream release — always clone/run the **latest** version,
+> as fixes land quickly in this preview feature; re-validation against v1.1.3 is in progress.
+> Separately, run the framework on a **supported runtime**: per the upstream
+> [setup guide](https://github.com/Azure/sap-automation-qa/blob/main/docs/SETUP.MD), config
+> checks require **Python 3.10+** (the system-default Python 3.6/3.9 is *not* supported). A run
+> on an unsupported runtime can execute the checks yet still produce an **empty HTML report**,
+> because the results are dropped before the report step. Use the bundle's Python 3.11 venv (or
+> the framework's `./scripts/setup.sh` venv).
 
 Full pipeline validated in a hub/spoke ALZ lab (jump server in hub, 2 simulated SAP VMs
 in spoke): inventory → SSH → IMDS → ARM checks → HTML report

@@ -23,8 +23,11 @@ CONFIG_*.html
 SESSION-NOTES.md
 CHAT-TRANSCRIPT.md
 
-# Presenter-only teleprompter script — keep local, do NOT publish to the shared repo
+# Presenter-only teleprompter scripts + internal slides — keep local, do NOT publish
 SPEECH.md
+SPEECH-*.md
+SLIDE-*.svg
+SLIDE-*.html
 
 # Python
 __pycache__/
