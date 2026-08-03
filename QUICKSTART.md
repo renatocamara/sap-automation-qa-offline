@@ -176,6 +176,13 @@ source .buildenv/bin/activate
 pip install --upgrade pip
 
 # 1. The framework + this documentation/fixes repo
+#    Always take the LATEST framework release — configuration checks are a fast-moving
+#    preview and fixes land quickly (as of this writing the latest is v1.1.3). A default
+#    `git clone` gives you the latest main; if you pin a tag, pin the newest one.
+#    NOTE ON RUNTIME: the framework requires Python 3.10+ (see docs/SETUP.MD). The system
+#    default (Python 3.6/3.9) is NOT supported — a run on it can execute the checks yet
+#    still produce an EMPTY HTML report because results are dropped before the report step.
+#    This guide installs and uses Python 3.11 for exactly that reason.
 git clone https://github.com/Azure/sap-automation-qa.git
 git clone https://github.com/renatocamara/sap-automation-qa-offline.git tools
 tar czf sap-automation-qa.tar.gz sap-automation-qa
