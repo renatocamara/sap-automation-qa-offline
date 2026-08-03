@@ -3,7 +3,9 @@
 # apply-framework-fixes.sh
 #
 # Applies the fixes documented in LAB-FINDINGS.md to a fresh clone of
-# Azure/sap-automation-qa (validated against v1.1.2).
+# Azure/sap-automation-qa (validated against v1.1.2; also applies to v1.1.3).
+# Includes the offline Azure-login and Azure-disk-collection tolerances so a
+# fully air-gapped jump server can complete the run and generate the report.
 #
 # Usage: ./apply-framework-fixes.sh [path-to-sap-automation-qa]   (default: .)
 # Run AFTER cloning the framework, BEFORE running the checks.
@@ -78,6 +80,33 @@ print("[ok] offline auth tolerance applied." if changed else "[skip] offline aut
 EOF
 else
     echo "[warn] $PB not found — offline auth fix not applied."
+fi
+
+# --- Fix: don't abort when Azure disk metadata can't be collected (offline) ---
+# disks.yml runs 'az disk show' per data disk. On an air-gapped jump 'az' can't
+# reach Azure, so the task fails and — with no failed_when — kills the whole run.
+# Then main.yml builds azure_disks_metadata by reading '.stdout' from each result;
+# with the failed/empty results offline that raises
+# "'dict object' has no attribute 'stdout'" and aborts again. These two changes
+# make the disk collection degrade gracefully (empty offline) instead of aborting.
+# Neither changes what the OS/SAP/DB checks test.
+DISKS="$REPO/src/roles/configuration_checks/tasks/disks.yml"
+if [[ -f "$DISKS" ]]; then
+    if grep -A1 'register:.*azure_disks_metadata_results' "$DISKS" | grep -q 'failed_when'; then
+        echo "[skip] disks: failed_when already present on 'Collect detailed azure disks data'."
+    else
+        sed -i '/register:.*azure_disks_metadata_results/a\      failed_when:                      false' "$DISKS"
+        echo "[ok] disks: failed_when: false added to 'Collect detailed azure disks data'."
+    fi
+else
+    echo "[warn] $DISKS not found — disk collection fix (part 1) not applied."
+fi
+
+if grep -q "selectattr('stdout', *'defined')" "$FILE"; then
+    echo "[skip] main: azure_disks_metadata selectattr guard already present."
+else
+    sed -i "/azure_disks_metadata:/ s/map(attribute='stdout')/selectattr('stdout','defined') | map(attribute='stdout')/" "$FILE"
+    echo "[ok] main: selectattr('stdout','defined') guard added to azure_disks_metadata."
 fi
 
 echo "Done. Reminder: add ansible_python_interpreter to hosts.yaml if targets run Python < 3.7 (SLES 15 / RHEL 8 defaults)."
