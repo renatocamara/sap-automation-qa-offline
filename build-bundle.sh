@@ -29,17 +29,32 @@ die()  { printf '\n\033[1;31m[build:ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 
 # ---- preflight --------------------------------------------------------------
 log "Preflight checks"
-command -v python3 >/dev/null || die "python3 not found."
-command -v git     >/dev/null || die "git not found (sudo apt-get install -y git)."
-python3 -m venv --help >/dev/null 2>&1 || die "python3-venv missing (sudo apt-get install -y python3-venv)."
-python3 -c 'import ensurepip' 2>/dev/null || die "python3 venv/pip support missing (install python3-venv)."
+command -v git >/dev/null || die "git not found (RHEL: 'sudo dnf install -y git'; Debian: 'sudo apt-get install -y git')."
+
+# Pick a build interpreter >= 3.8. ansible-galaxy needs it to talk to the current
+# Galaxy API; RHEL 8 defaults to python3.6, whose ansible-core is too old and fails
+# at the collections step ("Unexpected Exception ... /collections/index/..."). The
+# downloaded wheels still target the jump's 3.11 (TARGET_PYVER) regardless.
+BUILD_PY="${BUILD_PY:-}"
+if [[ -z "$BUILD_PY" ]]; then
+  for c in python3.12 python3.11 python3.10 python3.9 python3.8 python3; do
+    command -v "$c" >/dev/null 2>&1 || continue
+    if "$c" -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3,8) else 1)' 2>/dev/null; then
+      BUILD_PY="$c"; break
+    fi
+  done
+fi
+[[ -n "$BUILD_PY" ]] || die "No Python >= 3.8 found for the build. Install one (RHEL: 'sudo dnf install -y python3.11') and re-run, or set BUILD_PY=/path/to/python3.11."
+"$BUILD_PY" -m venv --help >/dev/null 2>&1 || die "$BUILD_PY lacks venv support (RHEL: 'sudo dnf install -y python3.11')."
+"$BUILD_PY" -c 'import ensurepip' 2>/dev/null || die "$BUILD_PY lacks pip/ensurepip (install the matching python3*-pip or python3*-venv)."
+log "Build interpreter: $BUILD_PY ($("$BUILD_PY" -V 2>&1))"
 
 log "Working directory: $WORKDIR"
 mkdir -p "$WORKDIR" && cd "$WORKDIR"
 
 # ---- 0. build venv (PEP 668-safe) -------------------------------------------
 log "Creating build virtual environment (.buildenv)"
-python3 -m venv .buildenv
+"$BUILD_PY" -m venv .buildenv
 # shellcheck disable=SC1091
 source .buildenv/bin/activate
 pip install --quiet --upgrade pip
