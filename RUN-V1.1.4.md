@@ -1,34 +1,43 @@
-# Running the `development-august-2026` branch (offline) — temporary procedure
+# Running release v1.1.4 (offline)
 
-> **Status: temporary.** This procedure exists because the STAF engineering team asked us to
-> validate the latest development branch (`development-august-2026`) ahead of the next tagged
-> release. Once that release is published, use [QUICKSTART.md](./QUICKSTART.md) with the
-> released version and retire this document.
+> **Status: current.** STAF **v1.1.4** was released by the engineering team on 2026-09-04
+> (available on `main` and as the tagged release). This is the procedure for the next execution.
 >
-> **Scope note:** the configuration checks are read-only against the SAP servers. Run against
-> non-production first when possible, and only run a development branch with the STAF team's
-> go-ahead.
+> **Why v1.1.4 matters for this engagement** (per the STAF engineering team):
+>
+> - **DB-Db2-0002 (Linux installation & system language)** now obtains the Db2 instance user's
+>   locale reliably and reports `LANG_NOT_SET` explicitly — this is the check that returned
+>   "ERROR: Command failed" in the previous run.
+> - **Azure Shared Disk (ASD) fencing** is now supported in check applicability — checks
+>   previously skipped for ASD-based deployments can now run.
 
 This is a delta on top of the standard procedure: everything about the environment
 (air-gapped jump, offline install, workspace) stays the same as
-[QUICKSTART.md](./QUICKSTART.md). What changes is **where the framework code comes from**
-(a branch ZIP instead of the release) — and, good news, this branch's `requirements.in`
-is **identical to v1.1.3**, so the existing offline bundle (wheels/collections/RPMs)
-works as-is. No rebuild needed.
+[QUICKSTART.md](./QUICKSTART.md). What changes is the framework version.
+
+**Verified against the v1.1.4 source (2026-09-04):**
+
+| Item | Result |
+|---|---|
+| `requirements.in` | **Identical to v1.1.3** (`ansible-core==2.16.19`) — the existing `wheels/` folder works as-is, no rebuild |
+| `collections/requirements.yml` | **Same seven collections, same versions** — the existing `collections_offline/` works as-is |
+| Offline tolerances | **Still required** — v1.1.4 does not change the `az login` or per-disk `az disk show` paths; `apply-framework-fixes.sh` still applies cleanly |
+| HA check gating | Unchanged — SCS/ERS HA checks still require `scs_high_availability: true`; DB-tier HA config checks remain HANA-only |
 
 ---
 
 ## Part 1 — Operator laptop (browser + terminal, has internet)
 
-1. Open the framework repo: <https://github.com/Azure/sap-automation-qa>
-2. On the top-left, click the **branch selector** (it shows `main` by default) and switch to
-   the branch **`development-august-2026`**.
-3. Click the green **Code** button and choose **Download ZIP**. You'll get
-   `sap-automation-qa-development-august-2026.zip`.
-4. Copy it to the jump server:
+1. Download the **v1.1.4 release ZIP** — either from the repo's **Releases** page
+   (<https://github.com/Azure/sap-automation-qa/releases>) or directly:
+
+   <https://github.com/Azure/sap-automation-qa/archive/refs/tags/1.1.4.zip>
+
+   You'll get `sap-automation-qa-1.1.4.zip`.
+2. Copy it to the jump server:
 
 ```bash
-scp sap-automation-qa-development-august-2026.zip <user>@<jump-server>:~/
+scp sap-automation-qa-1.1.4.zip <user>@<jump-server>:~/
 ```
 
 > The bundle pieces already on the jump (`wheels/`, `collections_offline/`, `jump_rpms/`,
@@ -40,12 +49,12 @@ scp sap-automation-qa-development-august-2026.zip <user>@<jump-server>:~/
 
 ```bash
 cd ~
-unzip sap-automation-qa-development-august-2026.zip
-cd sap-automation-qa-development-august-2026
+unzip sap-automation-qa-1.1.4.zip
+cd sap-automation-qa-1.1.4
 
 # Reuse the supported runtime already in place (Python 3.11 / ansible-core 2.16.19).
-# This branch's requirements.in is identical to v1.1.3, so the existing wheels
-# folder works as-is (no new downloads needed):
+# v1.1.4's requirements.in is identical to v1.1.3, so the existing wheels folder
+# works as-is (no new downloads needed):
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install --no-index --find-links=../wheels --upgrade pip
 pip install --no-index --find-links=../wheels -r requirements.in
@@ -55,10 +64,10 @@ COLL_DIR="$PWD/.ansible/collections"
 ansible --version    # must show ansible-core 2.16.19 / Python 3.11
 
 # Apply the offline fixes and WATCH the output lines:
-#   [ok]   = patch applied
-#   [skip] = already fixed in this branch (good news, nothing to do)
-#   [warn] = the code changed in this dev branch and the patch didn't apply.
-#            STOP here and share the output before running.
+#   [ok]   = patch applied (expected for the Azure-login and disk-collection tolerances)
+#   [skip] = already fixed upstream (expected for the IMDS fix, which landed in 1.1.3)
+#   [warn] = the code changed and the patch didn't apply. STOP here and share the
+#            output before running.
 bash ../tools/apply-framework-fixes.sh .
 
 # Reuse the existing, already-correct workspace (do NOT rebuild it):
@@ -77,6 +86,7 @@ was unset). In `WORKSPACES/SYSTEM/<workspace>/sap-parameters.yaml` set:
 ```yaml
 scs_high_availability: true
 scs_cluster_type: "AFA"     # or "ISCSI" / "ASD", per the actual fencing setup
+                             # (ASD is newly supported in v1.1.4 check applicability)
 ```
 
 If the ASCS/ERS is **not** clustered, leave the parameters as they are.
@@ -87,14 +97,14 @@ If the ASCS/ERS is **not** clustered, leave the parameters as they are.
 ### Run and verify
 
 ```bash
-./scripts/sap_automation_qa.sh -vv 2>&1 | tee run-dev-aug2026.log
+./scripts/sap_automation_qa.sh -vv 2>&1 | tee run-v114.log
 
 # Verify the report populated:
 ls -lh WORKSPACES/SYSTEM/<workspace>/quality_assurance/CONFIG_*.html
 ```
 
 Open the newest `CONFIG_*.html` — it should show a populated report (Total Checks > 0).
-Keep `run-dev-aug2026.log` and the HTML to share back with the STAF engineering team.
+Keep `run-v114.log` and the HTML to share back with the STAF engineering team.
 
 ---
 
@@ -103,5 +113,7 @@ Keep `run-dev-aug2026.log` and the HTML to share back with the STAF engineering 
 - `ansible --version` showed **ansible-core 2.16.19 / Python 3.11** before the run.
 - The wrapper log ends with **`return code: 0`** and `failed=0` for every SAP host.
 - The HTML report shows **Total Checks > 0** with real statuses (not an empty summary).
+- **DB-Db2-0002 (Linux installation & system language)** now shows a real value (or
+  `LANG_NOT_SET`) instead of "ERROR: Command failed".
 - If `scs_high_availability: true` was set, the report includes the **SCS/ERS HA
   Configuration** section (corosync/quorum/fencing values).
