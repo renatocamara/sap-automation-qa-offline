@@ -791,8 +791,8 @@ empty.** Before trusting any report, check all three:
 ### `no hosts matched` → empty report (`Total Checks: 0`)
 
 ```
-[WARNING]: Could not match supplied host pattern, ignoring: YRMJ_DB
-[WARNING]: Could not match supplied host pattern, ignoring: YRMJ_SCS
+[WARNING]: Could not match supplied host pattern, ignoring: X01_DB
+[WARNING]: Could not match supplied host pattern, ignoring: X01_SCS
 PLAY [Host tasks] ****  skipping: no hosts matched
 "Configuration checks completed. Check types executed: []"
 PLAY RECAP: localhost : ok=17 ...
@@ -800,7 +800,7 @@ PLAY RECAP: localhost : ok=17 ...
 
 **Cause:** the group names in `hosts.yaml` do not match what the playbook derives from
 `sap_sid` in `sap-parameters.yaml`. The playbook looks for `<sap_sid>_DB`,
-`<sap_sid>_SCS`, `<sap_sid>_APP`, etc. If `sap_sid: "YRMJ"` but the inventory groups are
+`<sap_sid>_SCS`, `<sap_sid>_APP`, etc. If `sap_sid: "X01"` but the inventory groups are
 named anything else (different SID, lowercase, or hosts listed without groups), **nothing
 matches and zero checks run** — yet the playbook still exits 0 and writes a report.
 

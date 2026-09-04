@@ -149,7 +149,7 @@ In your workspace parameters file
 
 | Setting | Value | Note |
 |---|---|---|
-| `sap_sid`, `db_sid`, `platform` | your values (e.g. `YRMJ`, `RMJYDB`, `DB2`) | same as the offline run |
+| `sap_sid`, `db_sid`, `platform` | your values (e.g. `X01`, `X01DB`, `DB2`) | same as the offline run |
 | `NFS_provider` | `ANF` or `AFS` (as applicable) | enables the storage collector |
 | `ANF_account_rg`, `ANF_account_name` | your ANF account details | required for the ANF checks to run |
 | `key_vault_id`, `secret_id` | **leave empty** | use a local SSH key file; Key Vault is optional (section 2) |

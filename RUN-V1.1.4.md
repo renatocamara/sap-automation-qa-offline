@@ -71,8 +71,8 @@ ansible --version    # must show ansible-core 2.16.19 / Python 3.11
 bash ../tools/apply-framework-fixes.sh .
 
 # Reuse the existing, already-correct workspace (do NOT rebuild it):
-OLD=~/roopesh/sap-config-check/sap-automation-qa    # adjust to the last working clone path
-cp -r "$OLD/WORKSPACES/SYSTEM/PRD-WUS3-SAP-RMJ" WORKSPACES/SYSTEM/
+OLD=<path-to-your-previous-clone>/sap-automation-qa    # the clone used in the last working run
+cp -r "$OLD/WORKSPACES/SYSTEM/<workspace>" WORKSPACES/SYSTEM/
 cp "$OLD/vars.yaml" ./vars.yaml
 ```
 
