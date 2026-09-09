@@ -52,10 +52,23 @@ cd ~
 unzip sap-automation-qa-1.1.4.zip
 cd sap-automation-qa-1.1.4
 
-# Reuse the supported runtime already in place (Python 3.11 / ansible-core 2.16.19).
-# v1.1.4's requirements.in is identical to v1.1.3, so the existing wheels folder
-# works as-is (no new downloads needed):
+# CHECKPOINT 1 - the bundle pieces must be reachable from here. Extract the ZIP
+# NEXT TO the existing wheels/ and collections_offline/ folders (same parent
+# directory, same OS user as the previous working setup). If this ls fails or
+# pip later prints "Location '../wheels' is ignored", the path is wrong - stop
+# and fix it (or use absolute paths in --find-links):
+ls ../wheels | grep -i ansible_core     # must show ansible_core-2.16.19
+
+# Reuse the supported runtime (Python 3.11 / ansible-core 2.16.19). v1.1.4's
+# requirements.in is identical to v1.1.3, so the existing wheels folder works
+# as-is (no new downloads needed).
+# Remove any pre-existing .venv first: creating a venv on top of an existing one
+# does NOT convert it to a new interpreter, and the bundle's compiled wheels are
+# cp311 - they will NOT install on a Python 3.12 venv ("No matching distribution
+# found" on the first compiled package, e.g. black):
+rm -rf .venv
 python3.11 -m venv .venv && source .venv/bin/activate
+python -V        # CHECKPOINT 2: must print Python 3.11.x - if it shows 3.12, stop
 pip install --no-index --find-links=../wheels --upgrade pip
 pip install --no-index --find-links=../wheels -r requirements.in
 mkdir -p .ansible/collections
